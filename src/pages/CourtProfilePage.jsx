@@ -4,7 +4,8 @@ import { padelService } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
-import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap } from 'lucide-react';
+import CourtBusinessDashboardModal from '@/components/social/CourtBusinessDashboardModal';
+import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap, BarChart3 } from 'lucide-react';
 
 export default function CourtProfilePage() {
   const { id } = useParams();
@@ -12,6 +13,7 @@ export default function CourtProfilePage() {
   const court = padelService.getCourtById(id) || padelService.getCourts()[0];
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'booking' | 'tournaments' | 'reviews'
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [, setRefreshKey] = useState(0);
   const isFollowingClub = user?.following_ids?.includes(court.id);
 
@@ -72,7 +74,16 @@ export default function CourtProfilePage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 w-full md:w-auto">
+          <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            {/* Botón Ver mi negocio (Menú Ejecutivo B2B) */}
+            <button
+              onClick={() => setIsDashboardOpen(true)}
+              className="flex-1 md:flex-none bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
+            >
+              <BarChart3 className="w-4 h-4 stroke-[2.5]" />
+              <span>Ver mi negocio</span>
+            </button>
+
             <button
               onClick={() => toggleFollow(court.id)}
               className={`flex-1 md:flex-none font-bold text-xs px-4 py-2.5 rounded-xl border transition-colors ${
@@ -85,7 +96,7 @@ export default function CourtProfilePage() {
             </button>
             <button
               onClick={() => setActiveTab('booking')}
-              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
             >
               Reservar Turno
             </button>
@@ -233,12 +244,19 @@ export default function CourtProfilePage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal para Crear Post */}
       <CreatePostModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onPostCreated={reloadPosts}
         defaultCourtId={court.id}
+      />
+
+      {/* Modal Dashboard Ejecutivo "Ver mi negocio" (B2B) */}
+      <CourtBusinessDashboardModal
+        isOpen={isDashboardOpen}
+        onClose={() => setIsDashboardOpen(false)}
+        court={court}
       />
     </div>
   );

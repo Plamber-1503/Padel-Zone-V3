@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { padelService } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -22,11 +23,14 @@ import {
   Sparkles,
   Building2,
   ShieldCheck,
-  Circle
+  Circle,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 export default function AppLayout() {
   const { user, logout, toggleFollow } = useAuth();
+  const { theme, toggleTheme, isDark } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,6 +123,25 @@ export default function AppLayout() {
               <PlusCircle className="w-4 h-4 stroke-[2.5]" />
               <span>Armar Partido</span>
             </Link>
+
+            {/* Theme Switcher Toggle (Modo Claro Facebook Style vs Modo Oscuro) */}
+            <button
+              onClick={toggleTheme}
+              title={isDark ? "Cambiar a Modo Claro (Estilo Facebook)" : "Cambiar a Modo Oscuro"}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-emerald-500/40 text-slate-300 hover:text-white transition-all text-xs font-bold cursor-pointer"
+            >
+              {isDark ? (
+                <>
+                  <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
+                  <span className="hidden md:inline text-amber-300">Modo Claro</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-4 h-4 text-sky-500" />
+                  <span className="hidden md:inline text-slate-700">Modo Oscuro</span>
+                </>
+              )}
+            </button>
 
             {/* Notifications */}
             <div className="relative">
