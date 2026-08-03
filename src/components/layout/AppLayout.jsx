@@ -90,7 +90,7 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col font-sans">
+    <div className={`min-h-screen ${isDark ? 'bg-[#080c14] text-slate-100' : 'bg-[#f0f2f5] text-slate-900'} flex flex-col font-sans transition-colors duration-300`}>
       {/* ── TOP HEADER (FIXED STICKY) ─────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-[#0d1322]/90 backdrop-blur-xl border-b border-slate-800/80 px-4 h-16 flex items-center justify-between shadow-2xl">
         <div className="flex items-center gap-6 max-w-7xl w-full mx-auto justify-between">
