@@ -51,6 +51,8 @@ export function initPadelStorage() {
     localStorage.removeItem(KEYS.TOURNAMENTS);
     localStorage.removeItem(KEYS.AVAILABILITIES);
     localStorage.removeItem(KEYS.MATCHES);
+    localStorage.removeItem(KEYS.BOOKINGS);
+    localStorage.removeItem(KEYS.CHATS);
     localStorage.setItem(VERSION_KEY, 'true');
   }
 
