@@ -1,0 +1,241 @@
+import React, { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { padelService } from '@/api/padelService';
+import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+export default function PostCard({ post, onPostUpdated }) {
+  const { user } = useAuth();
+  const [commentText, setCommentText] = useState('');
+  const [showComments, setShowComments] = useState(false);
+
+  const likes = post.likes || [];
+  const isLiked = likes.includes(user?.id);
+  const comments = post.comments || [];
+
+  const linkedMatch = post.match_id ? padelService.getOpenMatchById(post.match_id) : null;
+  const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
+  const isMatchFull = linkedMatch && (linkedMatch.joined_players?.length || 0) >= linkedMatch.max_players;
+
+  const handleLike = () => {
+    padelService.toggleLikePost(post.id);
+    if (onPostUpdated) onPostUpdated();
+  };
+
+  const handleJoinMatch = () => {
+    if (!post.match_id) return;
+    try {
+      padelService.joinOpenMatch(post.match_id);
+      if (onPostUpdated) onPostUpdated();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const handleComment = (e) => {
+    e.preventDefault();
+    if (!commentText.trim()) return;
+    padelService.addComment(post.id, commentText);
+    setCommentText('');
+    if (onPostUpdated) onPostUpdated();
+  };
+
+  const formattedDate = post.created_at
+    ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: es })
+    : 'recientemente';
+
+  return (
+    <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md transition-all hover:border-slate-700/80">
+      
+      {/* Header */}
+      <div className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img
+            src={post.author_avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
+            alt=""
+            className="w-10 h-10 rounded-xl object-cover border border-slate-700"
+          />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-white hover:underline cursor-pointer">
+                {post.author_name}
+              </span>
+              {post.author_type === 'court' && (
+                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-emerald-500/30 flex items-center gap-1">
+                  <Building2 className="w-2.5 h-2.5" /> Club Oficial
+                </span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <span>{formattedDate}</span>
+              {post.court_name && (
+                <>
+                  <span>•</span>
+                  <Link to={`/court/${post.court_id}`} className="text-emerald-400 hover:underline flex items-center gap-0.5">
+                    <MapPin className="w-2.5 h-2.5" /> {post.court_name}
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Post Type Badge */}
+        {post.type === 'open_match' && (
+          <span className="bg-amber-400/10 text-amber-400 border border-amber-400/20 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Zap className="w-3 h-3 fill-current" /> Partido Abierto
+          </span>
+        )}
+        {post.type === 'match_result' && (
+          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Trophy className="w-3 h-3" /> Marcador
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="px-4 pb-3 space-y-3">
+        <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+
+        {/* SPECIAL RENDER: Match Result Card */}
+        {post.type === 'match_result' && post.score && (
+          <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 flex items-center justify-around text-center">
+            <div>
+              <p className="text-xs font-bold text-slate-300">Pareja A</p>
+              <p className="text-[11px] text-slate-400">{post.players_tagged?.[0]} / {post.players_tagged?.[1]}</p>
+            </div>
+            <div className="bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-xl">
+              <span className="font-mono font-black text-emerald-400 text-sm">{post.score.set1} • {post.score.set2}</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-300">Pareja B</p>
+              <p className="text-[11px] text-slate-400">{post.players_tagged?.[2]} / {post.players_tagged?.[3]}</p>
+            </div>
+          </div>
+        )}
+
+        {/* SPECIAL RENDER: Open Match Card */}
+        {post.type === 'open_match' && (() => {
+          const isFlexible = post.open_match_details?.is_flexible_date || post.open_match_details?.date === 'Partido Abierto' || post.open_match_details?.time === 'A convenir' || post.open_match_details?.time === 'Fecha a convenir';
+          const courtName = post.court_name || 'la cancha';
+          const dynamicMsg = (!isFlexible && post.open_match_details?.date && post.open_match_details?.time && post.open_match_details?.date !== 'Partido Abierto')
+            ? `Hola ${post.author_name}! Me quiero sumar al partido que estás organizando en ${courtName} el ${post.open_match_details.date} a las ${post.open_match_details.time}.`
+            : `Hola ${post.author_name}! Me quiero sumar al partido que estás organizando en ${courtName}. ¿Qué día y a qué hora podemos coordinar?`;
+
+          return (
+            <div className="bg-gradient-to-r from-slate-800/90 to-slate-800/50 border border-amber-400/40 rounded-2xl p-4 space-y-3 shadow-lg">
+              <div className="flex justify-between items-start text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                    {post.open_match_details?.search_type === 'partner' ? '👥 Buscando Pareja' : '⚡ Buscando 4to Jugador'}
+                  </span>
+                  <h4 className="font-bold text-white text-sm mt-1">Organiza {post.author_name}</h4>
+                  <p className="text-slate-300 text-xs">
+                    {isFlexible
+                      ? 'Fecha y hora a convenir / Partido Abierto'
+                      : `${post.open_match_details?.date || 'Hoy'} • ${post.open_match_details?.time || ''}`}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="font-bold text-emerald-400 text-sm">{post.open_match_details?.price_per_player || '$1.200'}</span>
+                  <p className="text-[10px] text-slate-400">por jugador</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-700/60">
+                <span className="text-xs text-slate-300 font-semibold flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400" /> {courtName}
+                </span>
+
+                {post.author_id === user?.id ? (
+                  <span className="text-slate-400 font-bold text-xs px-3 py-1.5 bg-slate-800 rounded-xl border border-slate-700">
+                    Tu publicación
+                  </span>
+                ) : (
+                  <Link
+                    to={`/chat?user=${post.author_id}&msg=${encodeURIComponent(dynamicMsg)}`}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition-all hover:scale-105"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 fill-slate-950" />
+                    <span>Me quiero sumar</span>
+                  </Link>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Media Image if available */}
+        {post.media_url && (
+          <div className="rounded-xl overflow-hidden max-h-96 border border-slate-800">
+            <img src={post.media_url} alt="" className="w-full object-cover" />
+          </div>
+        )}
+      </div>
+
+      {/* Action Stats */}
+      <div className="px-4 py-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleLike}
+            className={`flex items-center gap-1.5 transition-colors font-medium ${
+              isLiked ? 'text-emerald-400 font-bold' : 'hover:text-white'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${isLiked ? 'fill-emerald-400 text-emerald-400' : ''}`} />
+            <span>{likes.length}</span>
+          </button>
+
+          <button
+            onClick={() => setShowComments(!showComments)}
+            className="flex items-center gap-1.5 hover:text-white transition-colors font-medium"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>{comments.length}</span>
+          </button>
+        </div>
+
+        <button className="flex items-center gap-1 hover:text-white transition-colors">
+          <Share2 className="w-3.5 h-3.5" />
+          <span>Compartir</span>
+        </button>
+      </div>
+
+      {/* Comments section */}
+      {showComments && (
+        <div className="bg-slate-950/60 p-4 border-t border-slate-800 space-y-3">
+          {comments.map((c) => (
+            <div key={c.id} className="flex gap-2.5 items-start text-xs">
+              <img src={c.author_avatar} alt="" className="w-6 h-6 rounded-lg object-cover mt-0.5" />
+              <div className="bg-slate-800/60 rounded-xl p-2.5 flex-1">
+                <span className="font-bold text-slate-200 block">{c.author_name}</span>
+                <p className="text-slate-300 mt-0.5">{c.text}</p>
+              </div>
+            </div>
+          ))}
+
+          {/* Add comment form */}
+          <form onSubmit={handleComment} className="flex gap-2 pt-1">
+            <input
+              type="text"
+              placeholder="Escribí un comentario..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="submit"
+              disabled={!commentText.trim()}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-1.5 rounded-xl disabled:opacity-50 transition-all"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}

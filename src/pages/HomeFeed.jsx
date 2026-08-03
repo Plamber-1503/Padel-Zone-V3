@@ -1,0 +1,141 @@
+import React, { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { padelService } from '@/api/padelService';
+import PostCard from '@/components/social/PostCard';
+import CreatePostModal from '@/components/social/CreatePostModal';
+import OpenMatchesCarousel from '@/components/social/OpenMatchesCarousel';
+import { PlusCircle, Zap, Trophy, Flame, Users } from 'lucide-react';
+
+export default function HomeFeed() {
+  const { user } = useAuth();
+  const [filter, setFilter] = useState('all'); // 'all' | 'following' | 'open_matches' | 'results'
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [, setRefreshKey] = useState(0);
+
+  const posts = padelService.getPosts(filter);
+
+  const reloadPosts = () => setRefreshKey(prev => prev + 1);
+
+  return (
+    <div className="space-y-5">
+      
+      {/* ── 1. CAROUSEL AUTO-SLIDING DE PARTIDOS ABIERTOS ("FALTA 4TO") ──── */}
+      <OpenMatchesCarousel />
+
+      {/* ── 2. CREATE POST BAR (FACEBOOK STYLE) ──────────────────────────── */}
+      <div className="bg-[#0d1322]/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-4 shadow-xl space-y-3">
+        <div className="flex items-center gap-3">
+          <img
+            src={user?.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
+            alt=""
+            className="w-10 h-10 rounded-xl object-cover border border-emerald-500/40"
+          />
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex-1 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 rounded-xl px-4 py-2.5 text-xs text-slate-400 text-left font-medium transition-all"
+          >
+            ¿Qué hay de nuevo en tu juego hoy, {user?.full_name?.split(' ')[0]}?
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-1.5 text-slate-300 hover:text-emerald-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
+          >
+            <PlusCircle className="w-4 h-4 text-emerald-400" />
+            <span>Publicación</span>
+          </button>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-1.5 text-slate-300 hover:text-amber-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
+          >
+            <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <span>Buscar 4to</span>
+          </button>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-1.5 text-slate-300 hover:text-emerald-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
+          >
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <span>Subir Marcador</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── 3. FEED FILTER TABS ──────────────────────────────────────────── */}
+      <div className="flex items-center bg-[#0d1322]/85 backdrop-blur-xl border border-slate-800/80 p-1.5 rounded-2xl gap-1 overflow-x-auto">
+        <button
+          onClick={() => setFilter('all')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            filter === 'all'
+              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Flame className="w-3.5 h-3.5" />
+          <span>Feed Principal</span>
+        </button>
+
+        <button
+          onClick={() => setFilter('following')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            filter === 'following'
+              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Siguiendo</span>
+        </button>
+
+        <button
+          onClick={() => setFilter('open_matches')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            filter === 'open_matches'
+              ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 fill-current" />
+          <span>Partidos Abiertos</span>
+        </button>
+
+        <button
+          onClick={() => setFilter('results')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            filter === 'results'
+              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>Marcadores</span>
+        </button>
+      </div>
+
+      {/* ── 4. SCROLLABLE POSTS LIST (CON FOTOS, MARCADORES Y COMENTARIOS) ─── */}
+      <div className="space-y-4">
+        {posts.map(post => (
+          <PostCard key={post.id} post={post} onPostUpdated={reloadPosts} />
+        ))}
+
+        {posts.length === 0 && (
+          <div className="bg-[#0d1322]/85 backdrop-blur-xl border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-2">
+            <p className="font-bold text-white text-base">No hay publicaciones en esta pestaña</p>
+            <p className="text-xs">¡Sé el primero en compartir una novedad o crear un partido abierto!</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      <CreatePostModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onPostCreated={reloadPosts}
+      />
+    </div>
+  );
+}
