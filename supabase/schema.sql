@@ -183,3 +183,14 @@ CREATE POLICY "Users Create Comments" ON public.comments FOR INSERT WITH CHECK (
 -- Mensajes de chat solo visibles para emisor y receptor
 CREATE POLICY "Users Read Own Messages" ON public.messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 CREATE POLICY "Users Send Messages" ON public.messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+-- ====================================================================
+-- SEED DE USUARIOS SOLICITADOS (JUGADOR 1, JUGADOR 2, JUGADOR 3)
+-- ====================================================================
+INSERT INTO public.profiles (id, email, full_name, role, level, bio, avatar_url, matches_played, matches_won)
+VALUES
+  ('00000000-0000-0000-0000-000000000001', 'jugador1@padelzone.app', 'Jugador 1', 'player', '4ta Categoría (Intermedio)', 'Jugador 1 ⚡ Apasionado por el pádel, buscando partidos parejos de 4ta.', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop', 28, 18),
+  ('00000000-0000-0000-0000-000000000002', 'jugador2@padelzone.app', 'Jugador 2', 'player', '5ta Categoría (Principiante+)', 'Jugador 2 🧠 Entrenando 2 veces por semana, buscando armar pareja para torneos.', 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=400&fit=crop', 15, 9),
+  ('00000000-0000-0000-0000-000000000003', 'jugador3@padelzone.app', 'Jugador 3', 'player', '3ra Categoría (Avanzado)', 'Jugador 3 🏆 Drive competitivo, disponible para torneos y partidos nocturnos.', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop', 45, 31)
+ON CONFLICT (id) DO NOTHING;
+

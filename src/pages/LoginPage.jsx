@@ -101,22 +101,29 @@ export default function LoginPage() {
         </div>
 
         {/* Demo Users quick select */}
-        <div className="bg-slate-800/40 p-3 rounded-2xl border border-slate-700/50 space-y-2">
-          <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Cuentas Demo rápidas:</p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-slate-800/40 p-3.5 rounded-2xl border border-slate-700/50 space-y-2.5">
+          <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Cuentas Demo solicitadas (Clave: demo1234):</p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
             <button
-              onClick={() => { setEmail('demo@padelzone.app'); setPassword('demo123'); }}
-              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-left border border-slate-700 transition-colors"
+              onClick={() => { setEmail('jugador1@padelzone.app'); setPassword('demo1234'); }}
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-center border border-slate-700 transition-colors"
             >
-              <p className="font-bold text-emerald-400">Martín Gómez</p>
-              <p className="text-[10px] text-slate-400">Jugador (4ta)</p>
+              <p className="font-bold text-emerald-400">Jugador 1</p>
+              <p className="text-[10px] text-slate-400">Nivel 4ta</p>
             </button>
             <button
-              onClick={() => { setEmail('carlos.owner@mail.com'); setPassword('demo123'); }}
-              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-left border border-slate-700 transition-colors"
+              onClick={() => { setEmail('jugador2@padelzone.app'); setPassword('demo1234'); }}
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-center border border-slate-700 transition-colors"
             >
-              <p className="font-bold text-amber-400">Carlos R.</p>
-              <p className="text-[10px] text-slate-400">Dueño de Club</p>
+              <p className="font-bold text-amber-400">Jugador 2</p>
+              <p className="text-[10px] text-slate-400">Nivel 5ta</p>
+            </button>
+            <button
+              onClick={() => { setEmail('jugador3@padelzone.app'); setPassword('demo1234'); }}
+              className="bg-slate-800 hover:bg-slate-700 p-2 rounded-xl text-center border border-slate-700 transition-colors"
+            >
+              <p className="font-bold text-emerald-300">Jugador 3</p>
+              <p className="text-[10px] text-slate-400">Nivel 3ra</p>
             </button>
           </div>
         </div>

@@ -81,6 +81,54 @@ export const INITIAL_USERS = [
     following_ids: ["u-sofia"],
     followers_count: 420,
     created_date: "2024-05-14T09:15:00Z"
+  },
+  {
+    id: "u-jugador1",
+    email: "jugador1@padelzone.app",
+    username: "jugador1",
+    password: "demo1234",
+    full_name: "Jugador 1",
+    role: "player",
+    level: "4ta Categoría (Intermedio)",
+    bio: "Jugador 1 ⚡ Apasionado por el pádel, buscando partidos parejos de 4ta.",
+    avatar_url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop",
+    matches_played: 28,
+    matches_won: 18,
+    following_ids: ["u-jugador2", "u-jugador3"],
+    followers_count: 95,
+    created_date: "2024-06-10T10:00:00Z"
+  },
+  {
+    id: "u-jugador2",
+    email: "jugador2@padelzone.app",
+    username: "jugador2",
+    password: "demo1234",
+    full_name: "Jugador 2",
+    role: "player",
+    level: "5ta Categoría (Principiante+)",
+    bio: "Jugador 2 🧠 Entrenando 2 veces por semana, buscando armar pareja para torneos.",
+    avatar_url: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=400&fit=crop",
+    matches_played: 15,
+    matches_won: 9,
+    following_ids: ["u-jugador1"],
+    followers_count: 64,
+    created_date: "2024-06-12T11:00:00Z"
+  },
+  {
+    id: "u-jugador3",
+    email: "jugador3@padelzone.app",
+    username: "jugador3",
+    password: "demo1234",
+    full_name: "Jugador 3",
+    role: "player",
+    level: "3ra Categoría (Avanzado)",
+    bio: "Jugador 3 🏆 Drive competitivo, disponible para torneos y partidos nocturnos.",
+    avatar_url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop",
+    matches_played: 45,
+    matches_won: 31,
+    following_ids: ["u-jugador1", "u-jugador2"],
+    followers_count: 140,
+    created_date: "2024-06-15T14:00:00Z"
   }
 ];
 

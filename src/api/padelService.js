@@ -40,7 +40,7 @@ function setItem(key, val) {
   } catch (e) { console.error('Error writing localStorage', e); }
 }
 
-const VERSION_KEY = 'pz3_db_version_v4';
+const VERSION_KEY = 'pz3_db_version_v5';
 
 export function initPadelStorage() {
   if (!localStorage.getItem(VERSION_KEY)) {
@@ -81,11 +81,16 @@ export const padelService = {
     return user;
   },
 
-  login(email, password) {
+  login(emailOrUsername, password) {
     const users = getItem(KEYS.USERS, INITIAL_USERS);
-    const found = users.find(u => u.email.toLowerCase() === (email || '').toLowerCase().trim());
+    const term = (emailOrUsername || '').toLowerCase().trim();
+    const found = users.find(u => 
+      (u.email && u.email.toLowerCase() === term) ||
+      (u.username && u.username.toLowerCase() === term) ||
+      (u.full_name && u.full_name.toLowerCase() === term)
+    );
     if (!found) throw new Error('Usuario no encontrado');
-    if (found.password && found.password !== password) throw new Error('Contraseña incorrecta (Usa: demo123)');
+    if (found.password && found.password !== password) throw new Error(`Contraseña incorrecta (Usa: ${found.password})`);
     return this.setCurrentUser(found);
   },
 
