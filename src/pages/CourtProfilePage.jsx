@@ -75,18 +75,9 @@ export default function CourtProfilePage() {
 
           {/* Action buttons */}
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {/* Botón Ver mi negocio (Menú Ejecutivo B2B) */}
-            <button
-              onClick={() => setIsDashboardOpen(true)}
-              className="flex-1 md:flex-none bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
-            >
-              <BarChart3 className="w-4 h-4 stroke-[2.5]" />
-              <span>Ver mi negocio</span>
-            </button>
-
             <button
               onClick={() => toggleFollow(court.id)}
-              className={`flex-1 md:flex-none font-bold text-xs px-4 py-2.5 rounded-xl border transition-colors ${
+              className={`flex-1 md:flex-none font-bold text-xs px-4 py-2.5 rounded-xl border transition-colors cursor-pointer ${
                 isFollowingClub
                   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                   : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700'
@@ -96,7 +87,7 @@ export default function CourtProfilePage() {
             </button>
             <button
               onClick={() => setActiveTab('booking')}
-              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
+              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
             >
               Reservar Turno
             </button>

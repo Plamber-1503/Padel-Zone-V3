@@ -7,8 +7,11 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   OPCIÓN 2: WPT PRO AZURE DARK MODE PALETTE (#0a1128)
+   ───────────────────────────────────────────────────────────────────────── */
 body {
-  background-color: #080c14;
+  background-color: #0a1128;
   color: #f1f5f9;
   font-family: var(--font-sans);
   overflow-x: hidden;
@@ -19,27 +22,27 @@ h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: var(--font-heading);
 }
 
-/* Glassmorphic utilities - Dark Default */
+/* Glassmorphic utilities - WPT Pro Azure Dark Mode */
 .glass-panel {
-  background: rgba(13, 19, 34, 0.85);
+  background: rgba(14, 23, 56, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(29, 45, 89, 0.8);
 }
 
 .glass-card {
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(19, 31, 66, 0.75);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(51, 65, 85, 0.5);
+  border: 1px solid rgba(40, 60, 110, 0.5);
 }
 
 .emerald-glow {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 25px -5px rgba(0, 245, 212, 0.35);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   COMPREHENSIVE LIGHT MODE OVERRIDES (ESTILO FACEBOOK - OPCIÓN 3)
+   ESTILOS DE MODO CLARO (FACEBOOK STYLE - OPCIÓN 3)
    ───────────────────────────────────────────────────────────────────────── */
 
 html.light,
@@ -181,10 +184,10 @@ html.light .bg-sky-500\/20 {
   border-color: #bae6fd !important;
 }
 
-/* Action Buttons (Keep vivid green & orange) */
+/* Action Buttons */
 html.light .bg-emerald-500 {
   background-color: #10b981 !important;
-  color: #091e15 !important;
+  color: #ffffff !important;
 }
 
 html.light .bg-emerald-500:hover {
@@ -198,18 +201,18 @@ html.light .bg-emerald-500:hover {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #080c14;
+  background: #0a1128;
 }
 html.light ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #1d2d59;
   border-radius: 9999px;
 }
 html.light ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #10b981;
+  background: #00f5d4;
 }

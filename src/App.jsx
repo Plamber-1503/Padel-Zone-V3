@@ -10,6 +10,7 @@ import OpenMatchesPage from '@/pages/OpenMatchesPage';
 import TournamentsPage from '@/pages/TournamentsPage';
 import ChatPage from '@/pages/ChatPage';
 import ProfilePage from '@/pages/ProfilePage';
+import ClubDashboardPage from '@/pages/ClubDashboardPage';
 import LoginPage from '@/pages/LoginPage';
 
 function ProtectedRoute({ children }) {
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/tournaments" element={<TournamentsPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/club-dashboard" element={<ClubDashboardPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

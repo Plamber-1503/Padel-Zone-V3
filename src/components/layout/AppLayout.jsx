@@ -5,6 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { padelService } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
+import ClubOwnerLoginModal from '@/components/social/ClubOwnerLoginModal';
 import {
   Home,
   CalendarDays,
@@ -35,6 +36,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isClubAuthModalOpen, setIsClubAuthModalOpen] = useState(false);
 
   const courts = padelService.getCourts();
   const upcomingBooking = padelService.getUpcomingBookingForCurrentUser();
@@ -90,7 +92,7 @@ export default function AppLayout() {
   };
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-[#080c14] text-slate-100' : 'bg-[#f0f2f5] text-slate-900'} flex flex-col font-sans transition-colors duration-300`}>
+    <div className={`min-h-screen ${isDark ? 'bg-[#0a1128] text-slate-100' : 'bg-[#f0f2f5] text-slate-900'} flex flex-col font-sans transition-colors duration-300`}>
       {/* ── TOP HEADER (FIXED STICKY) ─────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-[#0d1322]/90 backdrop-blur-xl border-b border-slate-800/80 px-4 h-16 flex items-center justify-between shadow-2xl">
         <div className="flex items-center gap-6 max-w-7xl w-full mx-auto justify-between">
@@ -274,6 +276,33 @@ export default function AppLayout() {
                 </Link>
               );
             })}
+
+            {/* BOTÓN SOCIO CLUB B2B */}
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  const isAuth = localStorage.getItem('pz3_club_owner_auth') === 'true';
+                  if (isAuth) {
+                    navigate('/club-dashboard');
+                  } else {
+                    setIsClubAuthModalOpen(true);
+                  }
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  location.pathname === '/club-dashboard'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/20'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Building2 className="w-5 h-5 text-amber-400 shrink-0 stroke-[2.5]" />
+                  <span>Socio Club</span>
+                </div>
+                <span className="text-[9px] uppercase font-mono font-black bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
+                  B2B PRO
+                </span>
+              </button>
+            </div>
           </nav>
 
           {/* En Línea Card */}
@@ -506,6 +535,12 @@ export default function AppLayout() {
           );
         })}
       </nav>
+
+      {/* Modal de Autenticación de Socio Club B2B */}
+      <ClubOwnerLoginModal
+        isOpen={isClubAuthModalOpen}
+        onClose={() => setIsClubAuthModalOpen(false)}
+      />
     </div>
   );
 }
