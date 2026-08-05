@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { padelService } from '@/api/padelService';
+import { useOpenMatches } from '@/api/padelService';
 import { useTheme } from '@/context/ThemeContext';
 import { Zap, Clock, ChevronLeft, ChevronRight, MapPin, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function OpenMatchesCarousel() {
   const { isDark } = useTheme();
-  const matches = padelService.getOpenMatches();
+  const { data: matches = [] } = useOpenMatches();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 

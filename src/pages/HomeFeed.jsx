@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService } from '@/api/padelService';
+import { usePosts } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
 import OpenMatchesCarousel from '@/components/social/OpenMatchesCarousel';
@@ -12,11 +12,10 @@ export default function HomeFeed() {
   const { isDark } = useTheme();
   const [filter, setFilter] = useState('all'); // 'all' | 'following' | 'open_matches' | 'results'
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [, setRefreshKey] = useState(0);
 
-  const posts = padelService.getPosts(filter);
+  const { data: posts = [], refetch } = usePosts(filter);
 
-  const reloadPosts = () => setRefreshKey(prev => prev + 1);
+  const reloadPosts = () => refetch();
 
   return (
     <div className="space-y-5">

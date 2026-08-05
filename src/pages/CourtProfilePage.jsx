@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourt, useCourts, usePosts, useBookings } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
@@ -10,25 +10,28 @@ import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Bui
 export default function CourtProfilePage() {
   const { id } = useParams();
   const { user, toggleFollow } = useAuth();
-  const court = padelService.getCourtById(id) || padelService.getCourts()[0];
+  const { data: courtDetail } = useCourt(id);
+  const { data: allCourts = [] } = useCourts();
+  const court = courtDetail || allCourts.find(c => c.id === id) || allCourts[0] || { id, name: 'Cancha', rating: 4.8 };
+  
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'booking' | 'tournaments' | 'reviews'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-  const [, setRefreshKey] = useState(0);
+
   const isFollowingClub = user?.following_ids?.includes(court.id);
 
-  const courtPosts = padelService.getCourtFeed(court.id);
+  const { data: allPosts = [], refetch: reloadPosts } = usePosts('all');
+  const courtPosts = allPosts.filter(p => p.court_id === court.id);
+
   const today = new Date().toISOString().split('T')[0];
-  const [takenSlots, setTakenSlots] = useState(
-    padelService.getBookingsForCourt(court.id, today).map(b => b.time)
-  );
+  const { data: courtBookings = [], refetch: refetchBookings } = useBookings(court.id, today);
+  const takenSlots = courtBookings.map(b => b.start_time || b.time);
 
-  const reloadPosts = () => setRefreshKey(prev => prev + 1);
-
-  const handleBookSlot = (time) => {
+  const handleBookSlot = async (time) => {
     try {
-      padelService.createBooking({ courtId: court.id, date: today, time });
-      setTakenSlots(prev => [...prev, time]);
+      await padelService.createBooking({ courtId: court.id, date: today, time });
+      alert('¡Reserva confirmada con éxito!');
+      refetchBookings();
     } catch (e) {
       alert(e.message);
     }

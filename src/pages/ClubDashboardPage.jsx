@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourts, useBookings } from '@/api/padelService';
 import {
   Building2,
   Plus,
@@ -23,7 +23,11 @@ import { useNavigate } from 'react-router-dom';
 export default function ClubDashboardPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'metrics' | 'locks'
-  const [courtsList, setCourtsList] = useState(() => padelService.getCourts());
+  const { data: fetchedCourts = [] } = useCourts();
+  const { data: allBookings = [] } = useBookings();
+  const [courtsList, setCourtsList] = useState([]);
+
+  const displayCourts = courtsList.length > 0 ? courtsList : fetchedCourts;
   const [isAddCourtModalOpen, setIsAddCourtModalOpen] = useState(false);
 
   // Formulario para Agregar Nueva Cancha

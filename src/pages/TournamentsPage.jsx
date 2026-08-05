@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { padelService } from '@/api/padelService';
+import React from 'react';
+import { padelService, useTournaments } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { Trophy, Calendar, MapPin, Award, Users, CheckCircle2 } from 'lucide-react';
 
 export default function TournamentsPage() {
   const { user } = useAuth();
-  const [tournaments, setTournaments] = useState(padelService.getTournaments());
+  const { data: tournaments = [], refetch } = useTournaments();
 
-  const handleRegister = (tournamentId) => {
+  const handleRegister = async (tournamentId) => {
     try {
-      const updated = padelService.registerForTournament(tournamentId);
-      setTournaments(updated);
+      await padelService.registerForTournament(tournamentId);
+      refetch();
     } catch (e) {
       alert(e.message);
     }

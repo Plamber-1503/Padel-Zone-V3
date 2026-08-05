@@ -48,14 +48,43 @@ export function AuthProvider({ children }) {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
-      const profile = await padelService.getUserById(data.user.id);
+      const profile = (await padelService.getUserById(data.user.id)) || data.user;
       setUser(profile);
       return profile;
     }
 
-    const loggedUser = padelService.login(email, password);
+    const loggedUser = await padelService.login(email, password);
     setUser(loggedUser);
     return loggedUser;
+  };
+
+  const signup = async (email, password, fullName) => {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName }
+        }
+      });
+      if (error) throw new Error(error.message);
+      if (data?.user) {
+        const profile = (await padelService.getUserById(data.user.id)) || data.user;
+        setUser(profile);
+        return profile;
+      }
+    }
+
+    const newUser = {
+      id: `u-${Date.now()}`,
+      email,
+      full_name: fullName,
+      role: 'player',
+      level: '4ta Categoría (Intermedio)',
+      avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop'
+    };
+    setUser(newUser);
+    return newUser;
   };
 
   const logout = async () => {
@@ -66,14 +95,14 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('pz3_current_user');
   };
 
-  const toggleFollow = (targetId) => {
-    const updated = padelService.toggleFollow(targetId);
+  const toggleFollow = async (targetId) => {
+    const updated = await padelService.toggleFollow(targetId);
     setUser(updated);
     return updated;
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, toggleFollow }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, toggleFollow }}>
       {children}
     </AuthContext.Provider>
   );

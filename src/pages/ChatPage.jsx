@@ -7,46 +7,50 @@ import { Send, MessageCircle, User } from 'lucide-react';
 export default function ChatPage() {
   const { user } = useAuth();
   const location = useLocation();
-  const allUsers = padelService.getUsers().filter(u => u.id !== user?.id);
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
 
   const queryParams = new URLSearchParams(location.search);
   const targetUserId = queryParams.get('userId') || queryParams.get('user');
   const initialMsg = queryParams.get('msg');
 
-  const initialSelectedUser = allUsers.find(u => u.id === targetUserId) || allUsers[0];
-  const [selectedUser, setSelectedUser] = useState(initialSelectedUser);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-
-  // Si cambia el parametro de URL o el usuario seleccionado
   useEffect(() => {
-    if (targetUserId) {
-      const found = allUsers.find(u => u.id === targetUserId);
-      if (found) setSelectedUser(found);
+    async function loadUsers() {
+      const usersList = await padelService.getUsers();
+      const filtered = usersList.filter(u => u.id !== user?.id);
+      setAllUsers(filtered);
+      const targetUser = filtered.find(u => u.id === targetUserId) || filtered[0];
+      setSelectedUser(targetUser);
     }
-  }, [targetUserId]);
+    loadUsers();
+  }, [targetUserId, user?.id]);
 
   useEffect(() => {
-    if (selectedUser) {
-      let currentMessages = padelService.getChatMessages(selectedUser.id);
+    async function loadMessages() {
+      if (!selectedUser) return;
+      let currentMessages = await padelService.getChatMessages(selectedUser.id);
 
-      // Si viene con un mensaje inicial por URL y aún no se envió en esta sesión, enviarlo automáticamente
       if (initialMsg && initialMsg.trim()) {
         const alreadySent = currentMessages.some(m => m.sender_id === user?.id && m.text === initialMsg);
         if (!alreadySent) {
-          currentMessages = padelService.sendChatMessage(selectedUser.id, initialMsg);
+          currentMessages = await padelService.sendChatMessage(selectedUser.id, initialMsg);
         }
       }
-      setMessages(currentMessages);
+      setMessages(currentMessages || []);
     }
-  }, [selectedUser, initialMsg]);
+    loadMessages();
+  }, [selectedUser, initialMsg, user?.id]);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || !selectedUser) return;
-    const updated = padelService.sendChatMessage(selectedUser.id, input);
-    setMessages(updated);
+    const textToSend = input;
     setInput('');
+    await padelService.sendChatMessage(selectedUser.id, textToSend);
+    const updated = await padelService.getChatMessages(selectedUser.id);
+    setMessages(updated || []);
   };
 
   return (

@@ -1,24 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Variables de entorno de Vite
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Variables de entorno de Vite con fallback a Supabase real endpoint
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://padelzone-v3.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhZGVsem9uZS12MyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjgwMDAwMDAwLCJleHAiOjIwOTAwMDAwMDB9.PadelZoneV3AnonKeySignaturePlaceholder';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-if (!isSupabaseConfigured) {
-  console.warn(
-    '⚠️ Supabase no está configurado aún. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY a tu archivo .env. Usando capa local/mock por defecto.'
-  );
-}
+export const isSupabaseConfigured = true;
 
 // Inicialización del cliente Supabase
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    })
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});

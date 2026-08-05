@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { padelService } from '@/api/padelService';
+import { padelService, useOpenMatches } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
 import AvailablePlayersModal from '@/components/social/AvailablePlayersModal';
@@ -9,15 +9,11 @@ import { Zap, Clock, MapPin, Users, PlusCircle, CheckCircle2, MessageCircle, Use
 export default function OpenMatchesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [matches, setMatches] = useState(padelService.getOpenMatches());
+  const { data: matches = [], refetch: refreshMatches } = useOpenMatches();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAvailableModalOpen, setIsAvailableModalOpen] = useState(false);
 
-  const availableCount = padelService.getAvailabilities().length;
-
-  const refreshMatches = () => {
-    setMatches(padelService.getOpenMatches());
-  };
+  const availableCount = padelService.getAvailabilities()?.length || 0;
 
   const handleSumarme = (match) => {
     if (match.host_id === user?.id || match.host_name === user?.full_name) {

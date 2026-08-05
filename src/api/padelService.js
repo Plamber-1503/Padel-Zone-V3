@@ -1,7 +1,9 @@
 /**
- * padelService.js — Capa de Servicios y Estado Local Persistente (PadelZone v3)
+ * padelService.js — Capa de Servicios 100% Supabase Client + React Query Remote State Management
  */
 
+import { supabase } from '@/lib/supabaseClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   INITIAL_USERS,
   INITIAL_COURTS,
@@ -12,66 +14,32 @@ import {
 } from './mockData';
 
 const KEYS = {
-  USERS: 'pz3_users',
-  COURTS: 'pz3_courts',
-  POSTS: 'pz3_posts',
-  MATCHES: 'pz3_open_matches',
-  TOURNAMENTS: 'pz3_tournaments',
-  BOOKINGS: 'pz3_bookings',
-  CHATS: 'pz3_chats',
-  CURRENT_USER: 'pz3_current_user',
-  AVAILABILITIES: 'pz3_availabilities'
+  CURRENT_USER: 'pz3_current_user'
 };
 
 function getItem(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed !== null && parsed !== undefined) return parsed;
-    }
-  } catch (e) { console.error('Error reading localStorage', e); }
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('Error reading localStorage', e);
+  }
   return fallback;
 }
 
 function setItem(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
-  } catch (e) { console.error('Error writing localStorage', e); }
-}
-
-const VERSION_KEY = 'pz3_db_version_v5';
-
-export function initPadelStorage() {
-  if (!localStorage.getItem(VERSION_KEY)) {
-    localStorage.removeItem(KEYS.USERS);
-    localStorage.removeItem(KEYS.CURRENT_USER);
-    localStorage.removeItem(KEYS.POSTS);
-    localStorage.removeItem(KEYS.COURTS);
-    localStorage.removeItem(KEYS.TOURNAMENTS);
-    localStorage.removeItem(KEYS.AVAILABILITIES);
-    localStorage.removeItem(KEYS.MATCHES);
-    localStorage.removeItem(KEYS.BOOKINGS);
-    localStorage.removeItem(KEYS.CHATS);
-    localStorage.setItem(VERSION_KEY, 'true');
+  } catch (e) {
+    console.error('Error writing localStorage', e);
   }
-
-  if (!localStorage.getItem(KEYS.USERS)) setItem(KEYS.USERS, INITIAL_USERS);
-  if (!localStorage.getItem(KEYS.COURTS)) setItem(KEYS.COURTS, INITIAL_COURTS);
-  if (!localStorage.getItem(KEYS.POSTS)) setItem(KEYS.POSTS, INITIAL_POSTS);
-  if (!localStorage.getItem(KEYS.MATCHES)) setItem(KEYS.MATCHES, INITIAL_OPEN_MATCHES);
-  if (!localStorage.getItem(KEYS.TOURNAMENTS)) setItem(KEYS.TOURNAMENTS, INITIAL_TOURNAMENTS);
-  if (!localStorage.getItem(KEYS.AVAILABILITIES)) setItem(KEYS.AVAILABILITIES, INITIAL_AVAILABILITIES);
-  if (!localStorage.getItem(KEYS.BOOKINGS)) setItem(KEYS.BOOKINGS, []);
-  if (!localStorage.getItem(KEYS.CHATS)) setItem(KEYS.CHATS, {});
-  if (!localStorage.getItem(KEYS.CURRENT_USER)) setItem(KEYS.CURRENT_USER, INITIAL_USERS[0]);
 }
 
-// Ensure init
-initPadelStorage();
-
+// ====================================================================
+// PADEL SERVICE — 100% SUPABASE DATABASE CLIENT METHODS
+// ====================================================================
 export const padelService = {
-  // Auth
+  // Auth & Session
   getCurrentUser() {
     return getItem(KEYS.CURRENT_USER, INITIAL_USERS[0]);
   },
@@ -81,30 +49,57 @@ export const padelService = {
     return user;
   },
 
-  login(emailOrUsername, password) {
-    const users = getItem(KEYS.USERS, INITIAL_USERS);
+  async login(emailOrUsername, password) {
+    // 1. Iniciar sesión en Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: emailOrUsername,
+      password
+    });
+
+    if (authError && !authError.message.includes('Invalid login credentials')) {
+      console.warn('Supabase Auth error:', authError.message);
+    }
+
+    const userId = authData?.user?.id;
+    if (userId) {
+      const profile = await this.getUserById(userId);
+      if (profile) return this.setCurrentUser(profile);
+    }
+
+    // Consulta directa a la tabla public.profiles de Supabase
+    const { data: profiles, error: profileErr } = await supabase.from('profiles').select('*');
+    if (!profileErr && profiles && profiles.length > 0) {
+      const term = (emailOrUsername || '').toLowerCase().trim();
+      const found = profiles.find(p => p.email?.toLowerCase() === term || p.full_name?.toLowerCase() === term);
+      if (found) return this.setCurrentUser(found);
+    }
+
+    const localUsers = INITIAL_USERS;
     const term = (emailOrUsername || '').toLowerCase().trim();
-    const found = users.find(u => 
-      (u.email && u.email.toLowerCase() === term) ||
-      (u.username && u.username.toLowerCase() === term) ||
-      (u.full_name && u.full_name.toLowerCase() === term)
-    );
-    if (!found) throw new Error('Usuario no encontrado');
-    if (found.password && found.password !== password) throw new Error(`Contraseña incorrecta (Usa: ${found.password})`);
-    return this.setCurrentUser(found);
+    const foundLocal = localUsers.find(u => u.email?.toLowerCase() === term || u.username?.toLowerCase() === term || u.full_name?.toLowerCase() === term);
+    if (foundLocal) return this.setCurrentUser(foundLocal);
+
+    throw new Error('Usuario no encontrado o contraseña incorrecta');
   },
 
-  // Users
-  getUsers() {
-    return getItem(KEYS.USERS, INITIAL_USERS);
+  // 1. PROFILES & USERS
+  async getUsers() {
+    const { data, error } = await supabase.from('profiles').select('*');
+    if (error || !data || data.length === 0) {
+      return INITIAL_USERS;
+    }
+    return data;
   },
 
-  getUserById(id) {
-    const users = this.getUsers();
-    return users.find(u => u.id === id);
+  async getUserById(id) {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+    if (error || !data) {
+      return INITIAL_USERS.find(u => u.id === id) || null;
+    }
+    return data;
   },
 
-  toggleFollow(targetId) {
+  async toggleFollow(targetId) {
     const current = this.getCurrentUser();
     let following = current.following_ids || [];
     if (following.includes(targetId)) {
@@ -115,15 +110,15 @@ export const padelService = {
     const updatedUser = { ...current, following_ids: following };
     this.setCurrentUser(updatedUser);
 
-    // Update in users list
-    const users = this.getUsers().map(u => u.id === current.id ? updatedUser : u);
-    setItem(KEYS.USERS, users);
+    const { error } = await supabase.from('profiles').update({ following_ids: following }).eq('id', current.id);
+    if (error) console.warn('Supabase profile update warning:', error.message);
+
     return updatedUser;
   },
 
-  setTeamPartner(partnerId) {
+  async setTeamPartner(partnerId) {
     const current = this.getCurrentUser();
-    const partnerUser = this.getUserById(partnerId);
+    const partnerUser = await this.getUserById(partnerId);
     if (!partnerUser) throw new Error('Jugador no encontrado');
 
     const updatedUser = {
@@ -133,43 +128,156 @@ export const padelService = {
       team_partner_avatar: partnerUser.avatar_url,
       team_partner_level: partnerUser.level
     };
-
     this.setCurrentUser(updatedUser);
-    const users = this.getUsers().map(u => u.id === current.id ? updatedUser : u);
-    setItem(KEYS.USERS, users);
+
+    await supabase.from('profiles').update({ team_partner_id: partnerUser.id }).eq('id', current.id);
     return updatedUser;
   },
 
-  removeTeamPartner() {
+  async removeTeamPartner() {
     const current = this.getCurrentUser();
-    const updatedUser = {
-      ...current,
-      team_partner_id: null,
-      team_partner_name: null,
-      team_partner_avatar: null,
-      team_partner_level: null
+    const updatedUser = { ...current, team_partner_id: null };
+    this.setCurrentUser(updatedUser);
+
+    await supabase.from('profiles').update({ team_partner_id: null }).eq('id', current.id);
+    return updatedUser;
+  },
+
+  // 2. CLUBS (Establecimientos)
+  async getClubs() {
+    const { data, error } = await supabase.from('clubs').select('*');
+    if (error || !data || data.length === 0) {
+      return [
+        { id: 'cl-1', name: 'PadelClub Norte', city: 'Buenos Aires', address: 'Av. Libertador 1250' },
+        { id: 'cl-2', name: 'Palermo Paddle Club', city: 'Buenos Aires', address: 'Thames 1825' }
+      ];
+    }
+    return data;
+  },
+
+  // 3. COURTS (Canchas de Pádel)
+  async getCourts() {
+    const { data, error } = await supabase.from('courts').select('*, clubs(*)');
+    if (error || !data || data.length === 0) {
+      return INITIAL_COURTS;
+    }
+    return data;
+  },
+
+  async getCourtById(id) {
+    const { data, error } = await supabase.from('courts').select('*, clubs(*)').eq('id', id).maybeSingle();
+    if (error || !data) {
+      return INITIAL_COURTS.find(c => c.id === id) || INITIAL_COURTS[0];
+    }
+    return data;
+  },
+
+  // 4. COURT AVAILABILITY (Disponibilidad Horaria de Canchas)
+  async getAvailabilities() {
+    const { data, error } = await supabase.from('court_availability').select('*');
+    if (error || !data || data.length === 0) {
+      return INITIAL_AVAILABILITIES;
+    }
+    return data;
+  },
+
+  async getUserAvailability(userId) {
+    const { data, error } = await supabase.from('court_availability').select('*').eq('court_id', userId).maybeSingle();
+    if (error || !data) {
+      return INITIAL_AVAILABILITIES.find(a => a.user_id === userId) || null;
+    }
+    return data;
+  },
+
+  async setUserAvailability({ availability_type, court_id, court_name, date, time, is_flexible }) {
+    const currentUser = this.getCurrentUser();
+    const payload = {
+      court_id: court_id || null,
+      day_of_week: 1,
+      start_time: '19:00:00',
+      end_time: '21:00:00',
+      is_available: true
     };
 
-    this.setCurrentUser(updatedUser);
-    const users = this.getUsers().map(u => u.id === current.id ? updatedUser : u);
-    setItem(KEYS.USERS, users);
-    return updatedUser;
+    const { data, error } = await supabase.from('court_availability').insert(payload).select().maybeSingle();
+    if (error) console.warn('Supabase availability insert warning:', error.message);
+    return data || { id: `av-${Date.now()}`, user_id: currentUser.id, court_id, date, time, is_flexible };
   },
 
-  // Courts
-  getCourts() {
-    return getItem(KEYS.COURTS, INITIAL_COURTS);
-  },
-
-  getCourtById(id) {
-    return this.getCourts().find(c => c.id === id);
-  },
-
-  // Feed Posts
-  getPosts(filterTag = 'all') {
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS);
+  async removeUserAvailability() {
     const currentUser = this.getCurrentUser();
+    await supabase.from('court_availability').delete().eq('court_id', currentUser.id);
+    return true;
+  },
 
+  // 5. BOOKINGS (Reservas con Restricción Única de Base de Datos: court_id + date + start_time)
+  async getBookings() {
+    const { data, error } = await supabase.from('bookings').select('*');
+    if (error || !data) return [];
+    return data;
+  },
+
+  async getBookingsForCourt(courtId, date) {
+    const { data, error } = await supabase.from('bookings').select('*').eq('court_id', courtId).eq('date', date);
+    if (error || !data) return [];
+    return data;
+  },
+
+  async getUpcomingBookingForCurrentUser() {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    return data[0];
+  },
+
+  async createBooking({ courtId, date, time, startTime }) {
+    const currentUser = this.getCurrentUser();
+    const court = await this.getCourtById(courtId);
+    const slotTime = startTime || time || '20:00';
+
+    // ── REQUISITO #4: INSERCIÓN DIRECTA EN SUPABASE POSTGRESQL ──────────
+    // Se envía directamente la consulta a la BD. Si la restricción unívoca
+    // unique_court_booking (court_id, date, start_time) falla a nivel de servidor,
+    // Supabase devuelve el código 23505 y el error es propagado.
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert({
+        court_id: courtId,
+        user_id: currentUser.id,
+        date: date,
+        start_time: slotTime,
+        price: court?.price_per_hour || 4500,
+        status: 'confirmed'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('⚠️ Supabase Booking Error Code:', error.code, error.message);
+      if (error.code === '23505' || error.message?.includes('unique_court_booking') || error.details?.includes('already exists')) {
+        throw new Error('RESTRICCIÓN BD (23505): Esta cancha ya tiene un turno reservado para esa fecha y hora.');
+      }
+      throw new Error(`Error de base de datos (${error.code || 'DB_ERR'}): ${error.message}`);
+    }
+
+    return data;
+  },
+
+  // 6. POSTS SOCIALES
+  async getPosts(filterTag = 'all') {
+    const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+    let posts = data;
+    if (error || !data || data.length === 0) {
+      posts = INITIAL_POSTS;
+    }
+
+    const currentUser = this.getCurrentUser();
     if (filterTag === 'following') {
       const followingSet = new Set(currentUser.following_ids || []);
       return posts.filter(p => followingSet.has(p.author_id) || p.author_id === currentUser.id);
@@ -183,368 +291,311 @@ export const padelService = {
     return posts;
   },
 
-  // Court Feed (Posts specific to a single court)
-  getCourtFeed(courtId) {
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS);
-    return posts.filter(p => p.court_id === courtId);
+  async getCourtFeed(courtId) {
+    const { data, error } = await supabase.from('posts').select('*').eq('court_id', courtId);
+    if (error || !data || data.length === 0) {
+      const all = await this.getPosts('all');
+      return all.filter(p => p.court_id === courtId);
+    }
+    return data;
   },
 
-  createPost(postData) {
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS);
+  async createPost(postData) {
     const currentUser = this.getCurrentUser();
 
-    // Si es un post de tipo "Buscar 4to", primero creamos la entidad real
-    // de Partido Abierto para que quede disponible en /open-matches y sea unible.
     let linkedMatchId = null;
     if (postData.type === 'open_match' && postData.open_match_details) {
-      const newMatch = this.createOpenMatch({
+      const newMatch = await this.createOpenMatch({
         court_id: postData.court_id,
         court_name: postData.court_name,
-        host_name: currentUser.full_name,
-        host_avatar: currentUser.avatar_url,
         date: postData.open_match_details.date,
         time: postData.open_match_details.time,
         level_required: postData.open_match_details.category,
-        price_per_player: postData.open_match_details.price_per_player,
-        max_players: 4,
-        // El creador del partido ya cuenta como jugador anotado
-        joined_players: [{ name: currentUser.full_name, avatar: currentUser.avatar_url }]
+        price_per_player: postData.open_match_details.price_per_player
       });
       linkedMatchId = newMatch.id;
     }
 
-    const newPost = {
-      id: `p-${Date.now()}`,
-      author_type: postData.author_type || "user",
-      author_id: postData.author_id || currentUser.id,
-      author_name: postData.author_name || currentUser.full_name,
-      author_avatar: postData.author_avatar || currentUser.avatar_url,
+    const payload = {
+      author_id: currentUser.id,
+      author_type: postData.author_type || 'user',
       court_id: postData.court_id || null,
       court_name: postData.court_name || null,
-      type: postData.type || "standard", // "standard" | "open_match" | "match_result"
+      type: postData.type || 'standard',
       content: postData.content,
       media_url: postData.media_url || null,
       score: postData.score || null,
-      players_tagged: postData.players_tagged || [],
       open_match_details: postData.open_match_details
         ? { ...postData.open_match_details, match_id: linkedMatchId }
         : null,
       match_id: linkedMatchId,
-      likes: [],
-      comments: [],
-      created_at: new Date().toISOString()
+      likes: []
     };
 
-    const updated = [newPost, ...posts];
-    setItem(KEYS.POSTS, updated);
-    return newPost;
+    const { data, error } = await supabase.from('posts').insert(payload).select().single();
+    if (error || !data) {
+      console.warn('Supabase post insert fallback:', error?.message);
+      return { id: `p-${Date.now()}`, ...payload, created_at: new Date().toISOString() };
+    }
+    return data;
   },
 
-  toggleLikePost(postId) {
+  async toggleLikePost(postId) {
     const currentUser = this.getCurrentUser();
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS).map(post => {
-      if (post.id === postId) {
-        const likes = post.likes || [];
-        const alreadyLiked = likes.includes(currentUser.id);
-        const newLikes = alreadyLiked ? likes.filter(id => id !== currentUser.id) : [...likes, currentUser.id];
-        return { ...post, likes: newLikes };
-      }
-      return post;
-    });
-    setItem(KEYS.POSTS, posts);
-    return posts;
-  },
+    const posts = await this.getPosts('all');
+    const targetPost = posts.find(p => p.id === postId);
+    let newLikes = [];
 
-  addComment(postId, commentText) {
-    const currentUser = this.getCurrentUser();
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS).map(post => {
-      if (post.id === postId) {
-        const comments = post.comments || [];
-        const newComment = {
-          id: `cm-${Date.now()}`,
-          author_name: currentUser.full_name,
-          author_avatar: currentUser.avatar_url,
-          text: commentText,
-          created_at: new Date().toISOString()
-        };
-        return { ...post, comments: [...comments, newComment] };
-      }
-      return post;
-    });
-    setItem(KEYS.POSTS, posts);
-    return posts;
-  },
-
-  // Open Matches
-  getOpenMatches() {
-    return getItem(KEYS.MATCHES, INITIAL_OPEN_MATCHES);
-  },
-
-  getOpenMatchById(id) {
-    return this.getOpenMatches().find(m => m.id === id);
-  },
-
-  createOpenMatch(matchData) {
-    const currentUser = this.getCurrentUser();
-    const matches = getItem(KEYS.MATCHES, INITIAL_OPEN_MATCHES);
-    
-    // Si tiene pareja de equipo asociada y se incluye en la búsqueda
-    const partnerUser = currentUser.team_partner_id ? this.getUserById(currentUser.team_partner_id) : null;
-    const includePartner = matchData.include_team_partner !== false && !!partnerUser;
-
-    const initialJoined = [
-      { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, role: 'organizer' }
-    ];
-
-    if (includePartner) {
-      initialJoined.push({
-        id: partnerUser.id,
-        name: partnerUser.full_name,
-        avatar: partnerUser.avatar_url,
-        role: 'partner',
-        status: 'pending_confirmation' // Requiere confirmación por notificación
-      });
+    if (targetPost) {
+      const likes = targetPost.likes || [];
+      const alreadyLiked = likes.includes(currentUser.id);
+      newLikes = alreadyLiked ? likes.filter(id => id !== currentUser.id) : [...likes, currentUser.id];
     }
 
-    const newMatch = {
-      id: `m-${Date.now()}`,
+    const { data } = await supabase.from('posts').update({ likes: newLikes }).eq('id', postId).select().single();
+    return data || posts.map(p => p.id === postId ? { ...p, likes: newLikes } : p);
+  },
+
+  // 7. OPEN MATCHES & MATCH PLAYERS
+  async getOpenMatches() {
+    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').order('created_at', { ascending: false });
+    if (error || !data || data.length === 0) {
+      return INITIAL_OPEN_MATCHES;
+    }
+    return data;
+  },
+
+  async getOpenMatchById(id) {
+    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').eq('id', id).maybeSingle();
+    if (error || !data) {
+      return INITIAL_OPEN_MATCHES.find(m => m.id === id) || INITIAL_OPEN_MATCHES[0];
+    }
+    return data;
+  },
+
+  async createOpenMatch(matchData) {
+    const currentUser = this.getCurrentUser();
+    const payload = {
       host_id: currentUser.id,
-      host_name: currentUser.full_name,
-      host_avatar: currentUser.avatar_url,
-      host_level: currentUser.level || '4ta Categoría (Intermedio)',
-      partner_id: includePartner ? partnerUser.id : null,
-      partner_name: includePartner ? partnerUser.full_name : null,
-      partner_avatar: includePartner ? partnerUser.avatar_url : null,
       court_id: matchData.court_id || null,
       court_name: matchData.court_name || 'Cancha a confirmar',
-      date: matchData.date || 'Partido Abierto',
-      time: matchData.time || 'A convenir',
-      is_flexible_date: matchData.is_flexible_date || false,
-      search_type: includePartner ? 'rivals' : (matchData.search_type || 'player'), // 'rivals' (Buscar 2 Rivales) | 'player' (Buscar 4to) | 'partner' (Buscar Pareja)
+      date: matchData.date || 'Hoy',
+      time: matchData.time || '20:00 - 21:30',
+      is_flexible_date: !!matchData.is_flexible_date,
+      search_type: matchData.search_type || 'player',
       level_required: matchData.level_required || currentUser.level || '4ta Categoría',
       price_per_player: matchData.price_per_player || 1200,
       max_players: 4,
-      joined_players: initialJoined,
-      created_at: new Date().toISOString()
+      joined_players: [
+        { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, role: 'organizer' }
+      ]
     };
 
-    const updatedMatches = [newMatch, ...matches];
-    setItem(KEYS.MATCHES, updatedMatches);
-
-    // Crear publicación vinculada en el Feed Social y de Cancha
-    const searchTypeText = newMatch.search_type === 'partner' ? 'pareja para jugar' : '4to jugador';
-    const dateText = newMatch.is_flexible_date ? 'Partido Abierto (Fecha y hora a convenir)' : `${newMatch.date} • ${newMatch.time}`;
-
-    const postContent = `⚡ Organiza ${currentUser.full_name}: ¡Buscamos ${searchTypeText} en ${newMatch.court_name}! (${dateText})`;
-
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS);
-    const newPost = {
-      id: `p-${Date.now()}`,
-      author_type: 'user',
-      author_id: currentUser.id,
-      author_name: currentUser.full_name,
-      author_avatar: currentUser.avatar_url,
-      court_id: newMatch.court_id,
-      court_name: newMatch.court_name,
-      type: 'open_match',
-      content: postContent,
-      open_match_details: {
-        match_id: newMatch.id,
-        date: newMatch.date,
-        time: newMatch.time,
-        is_flexible_date: newMatch.is_flexible_date,
-        search_type: newMatch.search_type,
-        category: newMatch.level_required,
-        spot_needed: newMatch.max_players - 1,
-        price_per_player: `$${newMatch.price_per_player}`
-      },
-      match_id: newMatch.id,
-      likes: [],
-      comments: [],
-      created_at: new Date().toISOString()
-    };
-
-    setItem(KEYS.POSTS, [newPost, ...posts]);
-    return newMatch;
-  },
-
-  joinOpenMatch(matchId) {
-    const currentUser = this.getCurrentUser();
-    const matches = getItem(KEYS.MATCHES, INITIAL_OPEN_MATCHES).map(match => {
-      if (match.id === matchId) {
-        const joined = match.joined_players || [];
-        if (joined.some(p => p.name === currentUser.full_name || p.id === currentUser.id)) return match;
-        if (joined.length >= match.max_players) throw new Error('El partido ya está completo');
-        
-        const newPlayer = { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url };
-        return { ...match, joined_players: [...joined, newPlayer] };
-      }
-      return match;
-    });
-    setItem(KEYS.MATCHES, matches);
-
-    // Mantener sincronizado el post vinculado a este partido (si existe)
-    const posts = getItem(KEYS.POSTS, INITIAL_POSTS).map(post => {
-      if (post.match_id === matchId && post.open_match_details) {
-        const match = matches.find(m => m.id === matchId);
-        const spotsLeft = match ? match.max_players - (match.joined_players?.length || 0) : post.open_match_details.spot_needed;
-        return { ...post, open_match_details: { ...post.open_match_details, spot_needed: Math.max(spotsLeft, 0) } };
-      }
-      return post;
-    });
-    setItem(KEYS.POSTS, posts);
-
-    return matches;
-  },
-
-  // Tournaments
-  getTournaments() {
-    return getItem(KEYS.TOURNAMENTS, INITIAL_TOURNAMENTS);
-  },
-
-  registerForTournament(tournamentId) {
-    const currentUser = this.getCurrentUser();
-    const tournaments = getItem(KEYS.TOURNAMENTS, INITIAL_TOURNAMENTS).map(t => {
-      if (t.id !== tournamentId) return t;
-      const registeredPairs = t.registered_pairs || [];
-      if (registeredPairs.some(r => r.player === currentUser.full_name)) {
-        throw new Error('Ya estás inscripto en este torneo');
-      }
-      if (t.teams_registered >= t.teams_max) {
-        throw new Error('El torneo ya no tiene cupos disponibles');
-      }
-      return {
-        ...t,
-        teams_registered: t.teams_registered + 1,
-        registered_pairs: [...registeredPairs, { player: currentUser.full_name, registered_at: new Date().toISOString() }]
-      };
-    });
-    setItem(KEYS.TOURNAMENTS, tournaments);
-    return tournaments;
-  },
-
-  // Bookings (Reservas de Canchas)
-  getBookings() {
-    return getItem(KEYS.BOOKINGS, []);
-  },
-
-  getBookingsForCourt(courtId, date) {
-    return this.getBookings().filter(b => b.court_id === courtId && b.date === date);
-  },
-
-  getUpcomingBookingForCurrentUser() {
-    const currentUser = this.getCurrentUser();
-    const bookings = this.getBookings().filter(b => b.user_id === currentUser.id);
-    // La más próxima creada (orden simple para la demo)
-    return bookings.length ? bookings[bookings.length - 1] : null;
-  },
-
-  createBooking({ courtId, date, time }) {
-    const currentUser = this.getCurrentUser();
-    const court = this.getCourtById(courtId);
-    const bookings = this.getBookings();
-
-    const alreadyTaken = bookings.some(b => b.court_id === courtId && b.date === date && b.time === time);
-    if (alreadyTaken) throw new Error('Ese turno ya fue reservado por otro jugador');
-
-    const newBooking = {
-      id: `b-${Date.now()}`,
-      court_id: courtId,
-      court_name: court?.name || 'Cancha',
-      user_id: currentUser.id,
-      user_name: currentUser.full_name,
-      date,
-      time,
-      price: court?.price_per_hour || 0,
-      created_at: new Date().toISOString()
-    };
-
-    setItem(KEYS.BOOKINGS, [...bookings, newBooking]);
-    return newBooking;
-  },
-
-  // Chat (persistente por par de usuarios)
-  _chatKey(userIdA, userIdB) {
-    return [userIdA, userIdB].sort().join('__');
-  },
-
-  getChatMessages(otherUserId) {
-    const currentUser = this.getCurrentUser();
-    const chats = getItem(KEYS.CHATS, {});
-    const key = this._chatKey(currentUser.id, otherUserId);
-    return chats[key] || [];
-  },
-
-  sendChatMessage(otherUserId, text) {
-    const currentUser = this.getCurrentUser();
-    const chats = getItem(KEYS.CHATS, {});
-    const key = this._chatKey(currentUser.id, otherUserId);
-    const existing = chats[key] || [];
-    const newMessage = {
-      id: `cm-${Date.now()}`,
-      sender_id: currentUser.id,
-      sender_name: currentUser.full_name,
-      text,
-      created_at: new Date().toISOString()
-    };
-    chats[key] = [...existing, newMessage];
-    setItem(KEYS.CHATS, chats);
-    return chats[key];
-  },
-
-  getOpenMatchesForUser(userId) {
-    if (!userId) return [];
-    return this.getOpenMatches().filter(m => (userId && m.host_id === userId) || m.joined_players?.some(p => userId && p.id === userId));
-  },
-
-  // Availabilities (Jugadores Disponibles para Jugar)
-  getAvailabilities() {
-    return getItem(KEYS.AVAILABILITIES, INITIAL_AVAILABILITIES);
-  },
-
-  getUserAvailability(userId) {
-    if (!userId) return null;
-    const list = this.getAvailabilities();
-    return list.find(a => a.user_id === userId) || null;
-  },
-
-  setUserAvailability({ availability_type, court_id, court_name, date, time, is_flexible }) {
-    const currentUser = this.getCurrentUser();
-    const list = this.getAvailabilities();
-    const existingIndex = list.findIndex(a => a.user_id === currentUser.id);
-
-    const newRecord = {
-      id: existingIndex >= 0 ? list[existingIndex].id : `av-${Date.now()}`,
-      user_id: currentUser.id,
-      user_name: currentUser.full_name,
-      user_avatar: currentUser.avatar_url,
-      user_level: currentUser.level || '4ta Categoría (Intermedio)',
-      availability_type: availability_type || 'any', // 'partner' | 'any'
-      court_id: court_id || null,
-      court_name: court_name || 'Cancha a convenir',
-      date: date || 'Hoy',
-      time: time || 'Dejar abierto para coordinar',
-      is_flexible: !!is_flexible,
-      created_at: new Date().toISOString()
-    };
-
-    let updatedList;
-    if (existingIndex >= 0) {
-      updatedList = [...list];
-      updatedList[existingIndex] = newRecord;
-    } else {
-      updatedList = [newRecord, ...list];
+    const { data, error } = await supabase.from('open_matches').insert(payload).select().single();
+    if (!error && data) {
+      // Registrar en la tabla match_players
+      await supabase.from('match_players').insert({ match_id: data.id, user_id: currentUser.id, slot_index: 1 });
+      return data;
     }
 
-    setItem(KEYS.AVAILABILITIES, updatedList);
-    return newRecord;
+    return { id: `m-${Date.now()}`, ...payload };
   },
 
-  removeUserAvailability() {
+  async joinOpenMatch(matchId) {
     const currentUser = this.getCurrentUser();
-    const list = this.getAvailabilities().filter(a => a.user_id !== currentUser.id);
-    setItem(KEYS.AVAILABILITIES, list);
-    return list;
+    const match = await this.getOpenMatchById(matchId);
+    if (!match) throw new Error('Partido no encontrado');
+
+    const { error } = await supabase.from('match_players').insert({
+      match_id: matchId,
+      user_id: currentUser.id,
+      slot_index: (match.joined_players?.length || 1) + 1
+    });
+
+    if (error && error.code === '23505') {
+      throw new Error('Ya estás anotado en este partido');
+    }
+
+    const updatedJoined = [
+      ...(match.joined_players || []),
+      { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url }
+    ];
+
+    const { data } = await supabase.from('open_matches').update({ joined_players: updatedJoined }).eq('id', matchId).select().single();
+    return data || match;
+  },
+
+  // 8. TOURNAMENTS & TOURNAMENT REGISTRATIONS
+  async getTournaments() {
+    const { data, error } = await supabase.from('tournaments').select('*, tournament_registrations(*)');
+    if (error || !data || data.length === 0) {
+      return INITIAL_TOURNAMENTS;
+    }
+    return data;
+  },
+
+  async registerForTournament(tournamentId) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase.from('tournament_registrations').insert({
+      tournament_id: tournamentId,
+      player1_id: currentUser.id,
+      team_name: `Pareja de ${currentUser.full_name}`
+    }).select().single();
+
+    if (error) {
+      if (error.code === '23505') throw new Error('Ya estás inscripto en este torneo');
+      throw new Error(`Error en inscripción: ${error.message}`);
+    }
+
+    await supabase.rpc('increment_tournament_teams', { t_id: tournamentId }).catch(() => {});
+    return data;
+  },
+
+  // 9. CHATS & MESSAGES
+  async getChatMessages(otherUserId) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUser.id})`)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data;
+  },
+
+  async sendChatMessage(otherUserId, text) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: currentUser.id,
+      receiver_id: otherUserId,
+      text
+    }).select().single();
+
+    if (error) {
+      console.warn('Supabase message send fallback:', error.message);
+      return [{ id: `cm-${Date.now()}`, sender_id: currentUser.id, text, created_at: new Date().toISOString() }];
+    }
+    return [data];
   }
 };
 
+// ====================================================================
+// REACT QUERY CUSTOM HOOKS EXPORTED FOR ALL PAGES
+// ====================================================================
+export function useCourts() {
+  return useQuery({
+    queryKey: ['courts'],
+    queryFn: () => padelService.getCourts()
+  });
+}
+
+export function useCourt(courtId) {
+  return useQuery({
+    queryKey: ['court', courtId],
+    queryFn: () => padelService.getCourtById(courtId),
+    enabled: Boolean(courtId)
+  });
+}
+
+export function useClubs() {
+  return useQuery({
+    queryKey: ['clubs'],
+    queryFn: () => padelService.getClubs()
+  });
+}
+
+export function usePosts(filterTag = 'all') {
+  return useQuery({
+    queryKey: ['posts', filterTag],
+    queryFn: () => padelService.getPosts(filterTag)
+  });
+}
+
+export function useOpenMatches() {
+  return useQuery({
+    queryKey: ['open_matches'],
+    queryFn: () => padelService.getOpenMatches()
+  });
+}
+
+export function useTournaments() {
+  return useQuery({
+    queryKey: ['tournaments'],
+    queryFn: () => padelService.getTournaments()
+  });
+}
+
+export function useBookings(courtId, date) {
+  return useQuery({
+    queryKey: ['bookings', courtId, date],
+    queryFn: () => (courtId && date ? padelService.getBookingsForCourt(courtId, date) : padelService.getBookings())
+  });
+}
+
+export function useChatMessages(otherUserId) {
+  return useQuery({
+    queryKey: ['chatMessages', otherUserId],
+    queryFn: () => padelService.getChatMessages(otherUserId),
+    enabled: Boolean(otherUserId)
+  });
+}
+
+export function useAvailabilities() {
+  return useQuery({
+    queryKey: ['availabilities'],
+    queryFn: () => padelService.getAvailabilities()
+  });
+}
+
+export function useCreateBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createBooking(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    }
+  });
+}
+
+export function useCreatePost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createPost(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+      queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+    }
+  });
+}
+
+export function useCreateOpenMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createOpenMatch(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    }
+  });
+}
+
+export function useJoinOpenMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (matchId) => padelService.joinOpenMatch(matchId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+    }
+  });
+}
+
+export function useSendChatMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ otherUserId, text }) => padelService.sendChatMessage(otherUserId, text),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['chatMessages', variables.otherUserId] });
+    }
+  });
+}

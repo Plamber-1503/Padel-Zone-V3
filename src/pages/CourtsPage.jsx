@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { padelService } from '@/api/padelService';
+import { useCourts } from '@/api/padelService';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MapPin, Star, ShieldCheck, Filter, Search, Calendar } from 'lucide-react';
+import { MapPin, Star, ShieldCheck, Search } from 'lucide-react';
 
 export default function CourtsPage() {
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') || '');
   const [surfaceFilter, setSurfaceFilter] = useState('all');
-  const courts = padelService.getCourts();
+  const { data: courts = [], isLoading } = useCourts();
 
   // Si el usuario busca de nuevo desde el header estando ya en esta página,
   // sincronizamos el input con el nuevo query param.
@@ -17,10 +17,10 @@ export default function CourtsPage() {
   }, [searchParams]);
 
   const filteredCourts = courts.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
-                          c.address.toLowerCase().includes(search.toLowerCase()) ||
-                          c.city.toLowerCase().includes(search.toLowerCase());
-    const matchesSurface = surfaceFilter === 'all' || c.surface.toLowerCase().includes(surfaceFilter.toLowerCase());
+    const matchesSearch = c.name?.toLowerCase().includes(search.toLowerCase()) ||
+                          c.address?.toLowerCase().includes(search.toLowerCase()) ||
+                          c.city?.toLowerCase().includes(search.toLowerCase());
+    const matchesSurface = surfaceFilter === 'all' || c.surface?.toLowerCase().includes(surfaceFilter.toLowerCase());
     return matchesSearch && matchesSurface;
   });
 
