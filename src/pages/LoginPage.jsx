@@ -27,10 +27,11 @@ export default function LoginPage() {
     setError('');
     try {
       if (isSupabaseConfigured && supabase) {
+        const redirectUrl = `${window.location.origin}${import.meta.env.BASE_URL}`;
         const { error } = await supabase.auth.signInWithOAuth({
           provider: provider, // 'google' | 'facebook'
           options: {
-            redirectTo: `${window.location.origin}/#/`
+            redirectTo: redirectUrl
           }
         });
         if (error) throw error;
