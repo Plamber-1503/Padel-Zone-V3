@@ -1,13 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { padelService } from '@/api/padelService';
+import { padelService, useAvailabilities } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Users, MessageCircle, MapPin, Clock, Zap, UserCheck } from 'lucide-react';
 
 export default function AvailablePlayersModal({ isOpen, onClose }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const availabilities = padelService.getAvailabilities();
+  const { data: availabilities = [] } = useAvailabilities();
 
   if (!isOpen) return null;
 

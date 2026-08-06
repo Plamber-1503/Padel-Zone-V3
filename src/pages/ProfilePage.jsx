@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { padelService } from '@/api/padelService';
+import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -19,9 +19,13 @@ function ProfilePageContent() {
   const [, setRefreshKey] = useState(0);
   const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
 
-  const myPosts = user?.id ? (padelService.getPosts() || []).filter(p => p && p.author_id === user.id) : [];
-  const myAvailability = user?.id ? padelService.getUserAvailability(user.id) : null;
-  const myOpenMatches = user?.id ? (padelService.getOpenMatchesForUser(user.id) || []) : [];
+  const { data: postsData = [] } = usePosts('all');
+  const { data: openMatchesData = [] } = useOpenMatches();
+  const { data: availabilitiesData = [] } = useAvailabilities();
+
+  const myPosts = user?.id ? postsData.filter(p => p && p.author_id === user.id) : [];
+  const myAvailability = user?.id ? availabilitiesData.find(a => a.user_id === user.id || a.court_id === user.id) : null;
+  const myOpenMatches = user?.id ? openMatchesData.filter(m => m && (m.host_id === user.id || m.host_name === user.full_name)) : [];
 
   const reloadData = () => setRefreshKey(prev => prev + 1);
 
@@ -254,7 +258,8 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
-  const allUsers = (padelService.getUsers() || []).filter(u => u && u.id !== user?.id);
+  const { data: usersData = [] } = useUsers();
+  const allUsers = usersData.filter(u => u && u.id !== user?.id);
 
   // Sugeridos por partidos jugados recurrentes
   const suggestedPartners = allUsers.slice(0, 3);

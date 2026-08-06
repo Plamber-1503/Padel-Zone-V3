@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { padelService, useOpenMatches } from '@/api/padelService';
+import { padelService, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
 import AvailablePlayersModal from '@/components/social/AvailablePlayersModal';
@@ -10,10 +10,12 @@ export default function OpenMatchesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: matches = [], refetch: refreshMatches } = useOpenMatches();
+  const { data: availabilities = [] } = useAvailabilities();
+  const { data: usersList = [] } = useUsers();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAvailableModalOpen, setIsAvailableModalOpen] = useState(false);
 
-  const availableCount = padelService.getAvailabilities()?.length || 0;
+  const availableCount = availabilities.length;
 
   const handleSumarme = (match) => {
     if (match.host_id === user?.id || match.host_name === user?.full_name) {
@@ -31,7 +33,7 @@ export default function OpenMatchesPage() {
       defaultMsg = `Hola ${match.host_name}! Me quiero sumar al partido que estás organizando en ${courtName}. ¿Qué día y a qué hora podemos coordinar?`;
     }
 
-    const hostUser = match.host_id ? { id: match.host_id } : padelService.getUsers().find(u => u.full_name === match.host_name);
+    const hostUser = match.host_id ? { id: match.host_id } : usersList.find(u => u.full_name === match.host_name);
     const targetId = hostUser ? hostUser.id : 'u-lucas';
     navigate(`/chat?user=${targetId}&msg=${encodeURIComponent(defaultMsg)}`);
   };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourts } from '@/api/padelService';
 import { Image, Zap, Trophy, X, Send, MapPin } from 'lucide-react';
 
 export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaultCourtId = null }) {
@@ -10,7 +10,7 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
   const [mediaUrl, setMediaUrl] = useState('');
   
   // Court selection
-  const courts = padelService.getCourts();
+  const { data: courts = [] } = useCourts();
   const [selectedCourtId, setSelectedCourtId] = useState(defaultCourtId || courts[0]?.id || '');
   
   // Match Result state

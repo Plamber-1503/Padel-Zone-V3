@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourts, useBookings } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }) {
   const { user } = useAuth();
-  const courts = padelService.getCourts();
-  const userBookings = padelService.getBookings().filter(b => b.user_id === user?.id);
+  const { data: courts = [] } = useCourts();
+  const { data: allBookings = [] } = useBookings();
+  const userBookings = allBookings.filter(b => b.user_id === user?.id);
 
   // Form State
   const [dateMode, setDateMode] = useState('manual'); // 'manual' | 'booking' | 'flexible'

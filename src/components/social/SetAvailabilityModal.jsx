@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourts } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, UserCheck } from 'lucide-react';
 
 export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySaved, initialData }) {
   const { user } = useAuth();
-  const courts = padelService.getCourts();
+  const { data: courts = [] } = useCourts();
 
   const [availabilityType, setAvailabilityType] = useState(initialData?.availability_type || 'partner'); // 'partner' | 'any'
   const [courtId, setCourtId] = useState(initialData?.court_id || courts[0]?.id || '');

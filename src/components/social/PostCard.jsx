@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService } from '@/api/padelService';
+import { padelService, useOpenMatches } from '@/api/padelService';
 import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -12,12 +12,13 @@ export default function PostCard({ post, onPostUpdated }) {
   const { isDark } = useTheme();
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
+  const { data: openMatches = [] } = useOpenMatches();
 
   const likes = post.likes || [];
   const isLiked = likes.includes(user?.id);
   const comments = post.comments || [];
 
-  const linkedMatch = post.match_id ? padelService.getOpenMatchById(post.match_id) : null;
+  const linkedMatch = post.match_id ? openMatches.find(m => m.id === post.match_id) : null;
   const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
   const isMatchFull = linkedMatch && (linkedMatch.joined_players?.length || 0) >= linkedMatch.max_players;
 
