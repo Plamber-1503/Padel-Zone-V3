@@ -483,6 +483,20 @@ export const padelService = {
 // ====================================================================
 // REACT QUERY CUSTOM HOOKS EXPORTED FOR ALL PAGES
 // ====================================================================
+export function useUsers() {
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: () => padelService.getUsers()
+  });
+}
+
+export function useUpcomingBooking() {
+  return useQuery({
+    queryKey: ['upcoming_booking'],
+    queryFn: () => padelService.getUpcomingBookingForCurrentUser()
+  });
+}
+
 export function useCourts() {
   return useQuery({
     queryKey: ['courts'],

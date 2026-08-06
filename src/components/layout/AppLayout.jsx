@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService } from '@/api/padelService';
+import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useUsers, useUpcomingBooking } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import ClubOwnerLoginModal from '@/components/social/ClubOwnerLoginModal';
@@ -38,14 +38,19 @@ export default function AppLayout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isClubAuthModalOpen, setIsClubAuthModalOpen] = useState(false);
 
-  const courts = padelService.getCourts();
-  const upcomingBooking = padelService.getUpcomingBookingForCurrentUser();
-  const openMatches = padelService.getOpenMatches().slice(0, 2);
+  const { data: courts = [] } = useCourts();
+  const { data: upcomingBooking = null } = useUpcomingBooking();
+  const { data: openMatchesData = [] } = useOpenMatches();
+  const { data: postsData = [] } = usePosts();
+  const { data: tournamentsData = [] } = useTournaments();
+  const { data: usersData = [] } = useUsers();
+
+  const openMatches = openMatchesData.slice(0, 2);
 
   // Notificaciones generadas a partir de datos reales: partidos abiertos con
   // cupo disponible + comentarios recientes en publicaciones del usuario.
   const notifications = [
-    ...padelService.getOpenMatches()
+    ...openMatchesData
       .filter(m => (m.joined_players?.length || 0) < m.max_players)
       .slice(0, 1)
       .map(m => ({
@@ -55,7 +60,7 @@ export default function AppLayout() {
         title: `¡Buscan jugadores en ${m.court_name}!`,
         subtitle: `${m.date} ${m.time} • ${m.level_required}`
       })),
-    ...padelService.getPosts()
+    ...postsData
       .filter(p => p.author_id === user?.id && (p.comments?.length || 0) > 0)
       .slice(0, 1)
       .map(p => ({
@@ -66,11 +71,11 @@ export default function AppLayout() {
         subtitle: `"${p.comments[p.comments.length - 1].text}"`
       }))
   ];
-  const tournaments = padelService.getTournaments().slice(0, 2);
-  const suggestedPlayers = padelService.getUsers().filter(u => u.id !== user?.id).slice(0, 3);
+  const tournaments = tournamentsData.slice(0, 2);
+  const suggestedPlayers = usersData.filter(u => u.id !== user?.id).slice(0, 3);
   
   // Jugadores conectados (En línea)
-  const onlineUsers = padelService.getUsers().filter(u => u.id !== user?.id).map((u, i) => ({
+  const onlineUsers = usersData.filter(u => u.id !== user?.id).map((u, i) => ({
     ...u,
     status_text: i === 0 ? "En PadelClub Norte" : i === 1 ? "Disponible para jugar" : "Buscando partido 4ta"
   }));
