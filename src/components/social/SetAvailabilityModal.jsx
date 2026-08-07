@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { padelService, useCourts } from '@/api/padelService';
+import { useCourts, useSetAvailability } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, UserCheck } from 'lucide-react';
 
 export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySaved, initialData }) {
   const { user } = useAuth();
   const { data: courts = [] } = useCourts();
+  const setAvailabilityMutation = useSetAvailability();
 
   const [availabilityType, setAvailabilityType] = useState(initialData?.availability_type || 'partner'); // 'partner' | 'any'
   const [courtId, setCourtId] = useState(initialData?.court_id || courts[0]?.id || '');
@@ -25,7 +26,7 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const selectedCourt = courts.find(c => c.id === courtId);
@@ -34,7 +35,7 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
     const finalTime = isFlexible ? 'Abierto a coordinar' : time;
 
     try {
-      const result = padelService.setUserAvailability({
+      const result = await setAvailabilityMutation.mutateAsync({
         availability_type: availabilityType,
         court_id: courtId,
         court_name: selectedCourt?.name || 'Cancha a convenir',
@@ -227,9 +228,10 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
             </button>
             <button
               type="submit"
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              disabled={setAvailabilityMutation.isPending}
+              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
             >
-              Guardar Disponibilidad
+              {setAvailabilityMutation.isPending ? 'Guardando...' : 'Guardar Disponibilidad'}
             </button>
           </div>
 

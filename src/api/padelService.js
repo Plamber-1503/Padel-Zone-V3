@@ -203,7 +203,7 @@ export const padelService = {
 
   // 4. COURT AVAILABILITY (Disponibilidad Horaria de Canchas)
   async getAvailabilities() {
-    const { data, error } = await supabase.from('court_availability').select('*');
+    const { data, error } = await supabase.from('player_availability').select('*').order('created_at', { ascending: false });
     if (error || !data || data.length === 0) {
       return INITIAL_AVAILABILITIES;
     }
@@ -211,7 +211,7 @@ export const padelService = {
   },
 
   async getUserAvailability(userId) {
-    const { data, error } = await supabase.from('court_availability').select('*').eq('court_id', userId).maybeSingle();
+    const { data, error } = await supabase.from('player_availability').select('*').eq('user_id', userId).maybeSingle();
     if (error || !data) {
       return INITIAL_AVAILABILITIES.find(a => a.user_id === userId) || null;
     }
@@ -220,22 +220,38 @@ export const padelService = {
 
   async setUserAvailability({ availability_type, court_id, court_name, date, time, is_flexible }) {
     const currentUser = this.getCurrentUser();
+
+    // Un jugador solo puede tener un estado de disponibilidad activo a la vez
+    await supabase.from('player_availability').delete().eq('user_id', currentUser.id);
+
     const payload = {
+      user_id: currentUser.id,
+      user_name: currentUser.full_name,
+      user_avatar: currentUser.avatar_url,
+      user_level: currentUser.level,
+      availability_type: availability_type || 'any',
       court_id: court_id || null,
-      day_of_week: 1,
-      start_time: '19:00:00',
-      end_time: '21:00:00',
-      is_available: true
+      court_name: court_name || null,
+      date: date || 'Hoy',
+      time: time || 'A convenir',
+      is_flexible: !!is_flexible
     };
 
-    const { data, error } = await supabase.from('court_availability').insert(payload).select().maybeSingle();
-    if (error) console.warn('Supabase availability insert warning:', error.message);
-    return data || { id: `av-${Date.now()}`, user_id: currentUser.id, court_id, date, time, is_flexible };
+    const { data, error } = await supabase.from('player_availability').insert(payload).select().maybeSingle();
+    if (error) {
+      console.error('Error al guardar disponibilidad:', error.message);
+      throw new Error(`Error al guardar disponibilidad: ${error.message}`);
+    }
+    return data;
   },
 
   async removeUserAvailability() {
     const currentUser = this.getCurrentUser();
-    await supabase.from('court_availability').delete().eq('court_id', currentUser.id);
+    const { error } = await supabase.from('player_availability').delete().eq('user_id', currentUser.id);
+    if (error) {
+      console.error('Error al quitar disponibilidad:', error.message);
+      throw new Error(`Error al quitar disponibilidad: ${error.message}`);
+    }
     return true;
   },
 
@@ -658,6 +674,26 @@ export function useCreateOpenMatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['open_matches'] });
       queryClient.invalidateQueries({ queryKey: ['posts'] });
+    }
+  });
+}
+
+export function useSetAvailability() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.setUserAvailability(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availabilities'] });
+    }
+  });
+}
+
+export function useRemoveAvailability() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => padelService.removeUserAvailability(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availabilities'] });
     }
   });
 }

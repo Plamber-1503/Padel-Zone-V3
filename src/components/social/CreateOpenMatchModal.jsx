@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { padelService, useCourts, useBookings } from '@/api/padelService';
+import { useCourts, useBookings, useCreateOpenMatch } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -7,6 +7,7 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
   const { user } = useAuth();
   const { data: courts = [] } = useCourts();
   const { data: allBookings = [] } = useBookings();
+  const createMatchMutation = useCreateOpenMatch();
   const userBookings = allBookings.filter(b => b.user_id === user?.id);
 
   // Form State
@@ -35,7 +36,7 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const selectedCourt = courts.find(c => c.id === courtId);
@@ -45,7 +46,7 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
     const finalTime = isFlexible ? 'Fecha a convenir' : time;
 
     try {
-      const newMatch = padelService.createOpenMatch({
+      const newMatch = await createMatchMutation.mutateAsync({
         court_id: courtId,
         court_name: selectedCourt?.name || 'Cancha Seleccionada',
         date: finalDate,
@@ -351,9 +352,10 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
             </button>
             <button
               type="submit"
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              disabled={createMatchMutation.isPending}
+              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
             >
-              Publicar Búsqueda
+              {createMatchMutation.isPending ? 'Publicando...' : 'Publicar Búsqueda'}
             </button>
           </div>
 

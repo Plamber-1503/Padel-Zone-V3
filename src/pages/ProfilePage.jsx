@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
+import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -35,15 +35,19 @@ function ProfilePageContent() {
   };
 
   const myPosts = user?.id ? postsData.filter(p => p && p.author_id === user.id) : [];
-  const myAvailability = user?.id ? availabilitiesData.find(a => a.user_id === user.id || a.court_id === user.id) : null;
+  const myAvailability = user?.id ? availabilitiesData.find(a => a.user_id === user.id) : null;
   const myOpenMatches = user?.id ? openMatchesData.filter(m => m && (m.host_id === user.id || m.host_name === user.full_name)) : [];
 
   const reloadData = () => setRefreshKey(prev => prev + 1);
+  const removeAvailabilityMutation = useRemoveAvailability();
 
-  const handleRemoveAvailability = () => {
+  const handleRemoveAvailability = async () => {
     if (window.confirm('¿Deseas quitar tu estado de disponibilidad para jugar?')) {
-      padelService.removeUserAvailability();
-      reloadData();
+      try {
+        await removeAvailabilityMutation.mutateAsync();
+      } catch (err) {
+        alert(err.message || 'Error al quitar la disponibilidad');
+      }
     }
   };
 

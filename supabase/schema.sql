@@ -84,6 +84,25 @@ CREATE TABLE IF NOT EXISTS public.court_availability (
 );
 
 -- --------------------------------------------------------------------
+-- 4b. TABLA DE DISPONIBILIDAD DE JUGADORES PARA JUGAR (player_availability)
+--     * Distinta de court_availability (esa es el horario del club/cancha)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.player_availability (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name TEXT,
+  user_avatar TEXT,
+  user_level TEXT,
+  availability_type TEXT DEFAULT 'any', -- 'partner' | 'any'
+  court_id UUID REFERENCES public.courts(id) ON DELETE SET NULL,
+  court_name TEXT,
+  date TEXT,
+  time TEXT,
+  is_flexible BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- --------------------------------------------------------------------
 -- 5. TABLA DE RESERVAS DE TURNOS (bookings)
 --    * Restricción unívoca a nivel de BD: unique_court_booking (court_id, date, start_time)
 -- --------------------------------------------------------------------
@@ -254,6 +273,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clubs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.court_availability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.player_availability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.open_matches ENABLE ROW LEVEL SECURITY;
@@ -278,6 +298,15 @@ CREATE POLICY "Public Read Courts" ON public.courts FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Public Read Court Availability" ON public.court_availability;
 CREATE POLICY "Public Read Court Availability" ON public.court_availability FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public Read Player Availability" ON public.player_availability;
+DROP POLICY IF EXISTS "Users Insert Own Availability" ON public.player_availability;
+DROP POLICY IF EXISTS "Users Update Own Availability" ON public.player_availability;
+DROP POLICY IF EXISTS "Users Delete Own Availability" ON public.player_availability;
+CREATE POLICY "Public Read Player Availability" ON public.player_availability FOR SELECT USING (true);
+CREATE POLICY "Users Insert Own Availability" ON public.player_availability FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users Update Own Availability" ON public.player_availability FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users Delete Own Availability" ON public.player_availability FOR DELETE USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Public Read Open Matches" ON public.open_matches;
 CREATE POLICY "Public Read Open Matches" ON public.open_matches FOR SELECT USING (true);
