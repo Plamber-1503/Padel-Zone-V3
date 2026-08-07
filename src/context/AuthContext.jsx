@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
         if (isSupabaseConfigured && supabase) {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
-            const profile = await padelService.getUserById(session.user.id);
+            const profile = await padelService.ensureProfile(session.user);
             const currentUserObj = profile || session.user;
             setUser(currentUserObj);
             padelService.setCurrentUser(currentUserObj);
@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
           // Escuchar cambios de sesión en vivo
           const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
-              const profile = await padelService.getUserById(session.user.id);
+              const profile = await padelService.ensureProfile(session.user);
               const currentUserObj = profile || session.user;
               setUser(currentUserObj);
               padelService.setCurrentUser(currentUserObj);

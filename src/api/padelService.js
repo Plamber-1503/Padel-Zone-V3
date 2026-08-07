@@ -99,6 +99,35 @@ export const padelService = {
     return data;
   },
 
+  async ensureProfile(userObj) {
+    if (!userObj?.id) return null;
+    if (!isSupabaseConfigured || !supabase) return userObj;
+
+    const { data: existing } = await supabase.from('profiles').select('*').eq('id', userObj.id).maybeSingle();
+    if (existing) return existing;
+
+    const fullName = userObj.user_metadata?.full_name || userObj.user_metadata?.name || userObj.email?.split('@')[0] || 'Jugador PadelZone';
+    const avatarUrl = userObj.user_metadata?.avatar_url || userObj.user_metadata?.picture || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop';
+
+    const newProfile = {
+      id: userObj.id,
+      email: userObj.email || `${userObj.id}@padelzone.com`,
+      full_name: fullName,
+      avatar_url: avatarUrl,
+      role: 'player',
+      level: '4ta Categoría (Intermedio)',
+      elo_rating: 1200,
+      matches_played: 0,
+      matches_won: 0
+    };
+
+    const { data, error } = await supabase.from('profiles').upsert(newProfile).select().maybeSingle();
+    if (error) {
+      console.warn('Error upserting profile in Supabase:', error.message);
+    }
+    return data || newProfile;
+  },
+
   async toggleFollow(targetId) {
     const current = this.getCurrentUser();
     let following = current.following_ids || [];
@@ -487,6 +516,9 @@ export const padelService = {
   async sendChatMessage(otherUserId, text) {
     const currentUser = await this.getCurrentAuthUser();
     if (!currentUser?.id || !otherUserId) throw new Error('Usuario no autenticado');
+
+    // Asegurar perfil del emisor en public.profiles para evitar error FK 23503
+    await this.ensureProfile(currentUser);
 
     const { data, error } = await supabase.from('messages').insert({
       sender_id: currentUser.id,
