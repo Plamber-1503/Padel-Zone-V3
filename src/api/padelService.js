@@ -403,7 +403,7 @@ export const padelService = {
 
   // 7. OPEN MATCHES & MATCH PLAYERS
   async getOpenMatches() {
-    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').eq('status', 'open').order('created_at', { ascending: false });
     if (error || !data || data.length === 0) {
       return INITIAL_OPEN_MATCHES;
     }
@@ -466,8 +466,40 @@ export const padelService = {
       { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url }
     ];
 
-    const { data } = await supabase.from('open_matches').update({ joined_players: updatedJoined }).eq('id', matchId).select().single();
+    // Cierra automáticamente la búsqueda cuando se confirma el jugador/pareja que faltaba
+    const newStatus = updatedJoined.length >= (match.max_players || 4) ? 'completed' : match.status;
+
+    const { data } = await supabase.from('open_matches').update({ joined_players: updatedJoined, status: newStatus }).eq('id', matchId).select().single();
     return data || match;
+  },
+
+  async updateOpenMatch(matchId, updates) {
+    const payload = {
+      court_id: updates.court_id || null,
+      court_name: updates.court_name,
+      date: updates.date,
+      time: updates.time,
+      is_flexible_date: !!updates.is_flexible_date,
+      search_type: updates.search_type,
+      level_required: updates.level_required,
+      price_per_player: updates.price_per_player
+    };
+
+    const { data, error } = await supabase.from('open_matches').update(payload).eq('id', matchId).select().single();
+    if (error) {
+      console.error('Error al editar la búsqueda:', error.message);
+      throw new Error(`Error al editar la búsqueda: ${error.message}`);
+    }
+    return data;
+  },
+
+  async cancelOpenMatch(matchId) {
+    const { data, error } = await supabase.from('open_matches').update({ status: 'cancelled' }).eq('id', matchId).select().single();
+    if (error) {
+      console.error('Error al cerrar la búsqueda:', error.message);
+      throw new Error(`Error al cerrar la búsqueda: ${error.message}`);
+    }
+    return data;
   },
 
   // 8. TOURNAMENTS & TOURNAMENT REGISTRATIONS
@@ -702,6 +734,26 @@ export function useJoinOpenMatch() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (matchId) => padelService.joinOpenMatch(matchId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+    }
+  });
+}
+
+export function useUpdateOpenMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ matchId, updates }) => padelService.updateOpenMatch(matchId, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+    }
+  });
+}
+
+export function useCancelOpenMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (matchId) => padelService.cancelOpenMatch(matchId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['open_matches'] });
     }

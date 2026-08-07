@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
-import { useCourts, useBookings, useCreateOpenMatch } from '@/api/padelService';
+import React, { useState, useEffect } from 'react';
+import { useCourts, useBookings, useCreateOpenMatch, useUpdateOpenMatch } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 
-export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }) {
+export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated, editMatch }) {
   const { user } = useAuth();
   const { data: courts = [] } = useCourts();
   const { data: allBookings = [] } = useBookings();
   const createMatchMutation = useCreateOpenMatch();
+  const updateMatchMutation = useUpdateOpenMatch();
+  const isEditMode = !!editMatch;
   const userBookings = allBookings.filter(b => b.user_id === user?.id);
 
   // Form State
@@ -20,6 +22,28 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
   const [searchType, setSearchType] = useState(user?.team_partner_name ? 'rivals' : 'player'); // 'player' | 'partner' | 'rivals'
   const [levelRequired, setLevelRequired] = useState(user?.level || '4ta Categoría (Intermedio)');
   const [pricePerPlayer, setPricePerPlayer] = useState(1200);
+
+  useEffect(() => {
+    if (isOpen && editMatch) {
+      setDateMode(editMatch.is_flexible_date ? 'flexible' : 'manual');
+      setDate(editMatch.date || 'Hoy');
+      setTime(editMatch.time || '20:00 - 21:30');
+      setCourtId(editMatch.court_id || courts[0]?.id || '');
+      setIncludeTeamPartner(editMatch.search_type === 'rivals');
+      setSearchType(editMatch.search_type || 'player');
+      setLevelRequired(editMatch.level_required || user?.level || '4ta Categoría (Intermedio)');
+      setPricePerPlayer(editMatch.price_per_player || 1200);
+    } else if (isOpen && !editMatch) {
+      setDateMode('manual');
+      setDate('Hoy');
+      setTime('20:00 - 21:30');
+      setCourtId(courts[0]?.id || '');
+      setIncludeTeamPartner(!!user?.team_partner_name);
+      setSearchType(user?.team_partner_name ? 'rivals' : 'player');
+      setLevelRequired(user?.level || '4ta Categoría (Intermedio)');
+      setPricePerPlayer(1200);
+    }
+  }, [isOpen, editMatch]);
 
   if (!isOpen) return null;
 
@@ -45,23 +69,27 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
     const finalDate = isFlexible ? 'Partido Abierto' : date;
     const finalTime = isFlexible ? 'Fecha a convenir' : time;
 
-    try {
-      const newMatch = await createMatchMutation.mutateAsync({
-        court_id: courtId,
-        court_name: selectedCourt?.name || 'Cancha Seleccionada',
-        date: finalDate,
-        time: finalTime,
-        is_flexible_date: isFlexible,
-        search_type: includeTeamPartner ? 'rivals' : searchType,
-        include_team_partner: includeTeamPartner,
-        level_required: levelRequired,
-        price_per_player: Number(pricePerPlayer) || 1200
-      });
+    const matchPayload = {
+      court_id: courtId,
+      court_name: selectedCourt?.name || 'Cancha Seleccionada',
+      date: finalDate,
+      time: finalTime,
+      is_flexible_date: isFlexible,
+      search_type: includeTeamPartner ? 'rivals' : searchType,
+      include_team_partner: includeTeamPartner,
+      level_required: levelRequired,
+      price_per_player: Number(pricePerPlayer) || 1200
+    };
 
-      if (onMatchCreated) onMatchCreated(newMatch);
+    try {
+      const resultMatch = isEditMode
+        ? await updateMatchMutation.mutateAsync({ matchId: editMatch.id, updates: matchPayload })
+        : await createMatchMutation.mutateAsync(matchPayload);
+
+      if (onMatchCreated) onMatchCreated(resultMatch);
       onClose();
     } catch (err) {
-      alert(err.message || 'Error al crear la búsqueda de partido');
+      alert(err.message || 'Error al guardar la búsqueda de partido');
     }
   };
 
@@ -76,8 +104,8 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
               <Zap className="w-4 h-4 fill-amber-400" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">Armar Partido Abierto</h3>
-              <p className="text-xs text-slate-400">Publicá tu búsqueda para encontrar jugadores o pareja</p>
+              <h3 className="font-bold text-base text-white">{isEditMode ? 'Editar Búsqueda' : 'Armar Partido Abierto'}</h3>
+              <p className="text-xs text-slate-400">{isEditMode ? 'Modificá los datos de tu búsqueda activa' : 'Publicá tu búsqueda para encontrar jugadores o pareja'}</p>
             </div>
           </div>
           <button
@@ -352,10 +380,12 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated }
             </button>
             <button
               type="submit"
-              disabled={createMatchMutation.isPending}
+              disabled={createMatchMutation.isPending || updateMatchMutation.isPending}
               className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
             >
-              {createMatchMutation.isPending ? 'Publicando...' : 'Publicar Búsqueda'}
+              {(createMatchMutation.isPending || updateMatchMutation.isPending)
+                ? 'Guardando...'
+                : (isEditMode ? 'Guardar Cambios' : 'Publicar Búsqueda')}
             </button>
           </div>
 

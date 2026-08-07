@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability } from '@/api/padelService';
+import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability, useCancelOpenMatch } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
+import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
-import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2, MessageCircle } from 'lucide-react';
+import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2, MessageCircle, XCircle } from 'lucide-react';
 
 export default function ProfilePage() {
   return (
@@ -20,6 +21,7 @@ function ProfilePageContent() {
   const { user: authUser, toggleFollow } = useAuth();
   const [, setRefreshKey] = useState(0);
   const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
+  const [editingMatch, setEditingMatch] = useState(null);
 
   const { data: postsData = [] } = usePosts('all');
   const { data: openMatchesData = [] } = useOpenMatches();
@@ -40,6 +42,7 @@ function ProfilePageContent() {
 
   const reloadData = () => setRefreshKey(prev => prev + 1);
   const removeAvailabilityMutation = useRemoveAvailability();
+  const cancelMatchMutation = useCancelOpenMatch();
 
   const handleRemoveAvailability = async () => {
     if (window.confirm('¿Deseas quitar tu estado de disponibilidad para jugar?')) {
@@ -47,6 +50,16 @@ function ProfilePageContent() {
         await removeAvailabilityMutation.mutateAsync();
       } catch (err) {
         alert(err.message || 'Error al quitar la disponibilidad');
+      }
+    }
+  };
+
+  const handleCancelMatch = async (matchId) => {
+    if (window.confirm('¿Deseas cerrar esta búsqueda de partido? Ya no será visible para otros jugadores.')) {
+      try {
+        await cancelMatchMutation.mutateAsync(matchId);
+      } catch (err) {
+        alert(err.message || 'Error al cerrar la búsqueda');
       }
     }
   };
@@ -250,9 +263,28 @@ function ProfilePageContent() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-                  {isOwnProfile ? 'Organizado por ti' : `Organizado por ${user?.full_name?.split(' ')[0] || 'este jugador'}`}
-                </span>
+                {isOwnProfile ? (
+                  <>
+                    <button
+                      onClick={() => setEditingMatch(m)}
+                      className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </button>
+                    <button
+                      onClick={() => handleCancelMatch(m.id)}
+                      className="bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-700 hover:border-red-500/40 flex items-center gap-1.5 transition-colors"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Cerrar Búsqueda</span>
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                    {`Organizado por ${user?.full_name?.split(' ')[0] || 'este jugador'}`}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -289,6 +321,14 @@ function ProfilePageContent() {
         onClose={() => setIsAvailabilityModalOpen(false)}
         onAvailabilitySaved={reloadData}
         initialData={myAvailability}
+      />
+
+      {/* Modal para Editar Búsqueda de Partido */}
+      <CreateOpenMatchModal
+        isOpen={!!editingMatch}
+        editMatch={editingMatch}
+        onClose={() => setEditingMatch(null)}
+        onMatchCreated={reloadData}
       />
     </div>
   );
