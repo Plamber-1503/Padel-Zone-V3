@@ -353,8 +353,9 @@ VALUES (
   128
 ) ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.courts (id, club_id, name, surface, is_indoor, price_per_hour, rating, reviews_count, description)
-VALUES (
+INSERT INTO public.courts (id, club_id, name, surface, is_indoor, price_per_hour, rating, reviews_count, description, image_url, cover_image_url)
+VALUES
+(
   '00000000-0000-0000-0000-000000000001',
   '00000000-0000-0000-0000-000000000001',
   'Cancha 1 - Cristal Panorámica WPT',
@@ -363,6 +364,34 @@ VALUES (
   4500.00,
   4.9,
   64,
-  'Cancha central con iluminación LED profesional 500 lux y cristal de 12mm.'
+  'Cancha central con iluminación LED profesional 500 lux y cristal de 12mm.',
+  './images/norte_1.png',
+  './images/norte_2.png'
+),
+(
+  '00000000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000001',
+  'Cancha 2 - Moqueta Sintética',
+  'Moqueta Sintética',
+  false,
+  3800.00,
+  4.6,
+  18,
+  'Cancha exterior rodeada de arboleda, ambiente familiar y competitivo.',
+  './images/option_1.png',
+  './images/option_2.png'
+),
+(
+  '00000000-0000-0000-0000-000000000003',
+  '00000000-0000-0000-0000-000000000001',
+  'Cancha 3 - Cristal Panorámica WPT Palermo',
+  'Cristal Panorámico WPT',
+  true,
+  5500.00,
+  4.9,
+  67,
+  'Cancha climatizada de cristal panorámico, ideal para torneos WPT.',
+  './images/option_3.png',
+  'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=1200&fit=crop'
 ) ON CONFLICT (id) DO NOTHING;
 
