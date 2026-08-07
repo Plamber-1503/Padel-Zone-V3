@@ -12,6 +12,26 @@ export function AuthProvider({ children }) {
     async function initAuth() {
       try {
         if (isSupabaseConfigured && supabase) {
+          // Intercepción previa de #access_token=... antes de que HashRouter sobrescriba la URL
+          const rawHash = window.location.hash || '';
+          if (rawHash.includes('access_token=')) {
+            const hashString = rawHash.substring(rawHash.indexOf('access_token='));
+            const hashParams = new URLSearchParams(hashString);
+            const accessToken = hashParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              });
+
+              if (!sessionErr && sessionData?.session) {
+                window.history.replaceState(null, '', window.location.pathname + '#/');
+              }
+            }
+          }
+
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             const profile = await padelService.ensureProfile(session.user);
@@ -29,7 +49,7 @@ export function AuthProvider({ children }) {
               const currentUserObj = profile || session.user;
               setUser(currentUserObj);
               padelService.setCurrentUser(currentUserObj);
-            } else {
+            } else if (event === 'SIGNED_OUT') {
               setUser(null);
               localStorage.removeItem('pz3_current_user');
             }

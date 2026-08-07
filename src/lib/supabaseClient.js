@@ -6,9 +6,10 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIU
 
 export const isSupabaseConfigured = true;
 
-// Inicialización del cliente Supabase
+// Inicialización del cliente Supabase con soporte PKCE para compatibilidad con HashRouter en GitHub Pages
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
+    flowType: 'pkce',
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true
