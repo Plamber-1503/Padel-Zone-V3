@@ -7,8 +7,8 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('demo@padelzone.app');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loadingProvider, setLoadingProvider] = useState(null);
 
@@ -27,21 +27,31 @@ export default function LoginPage() {
     setError('');
     try {
       if (isSupabaseConfigured && supabase) {
-        const redirectUrl = `${window.location.origin}${import.meta.env.BASE_URL}`;
-        const { error } = await supabase.auth.signInWithOAuth({
+        const origin = window.location.origin;
+        const baseUrl = import.meta.env.BASE_URL || '/';
+        const redirectUrl = `${origin}${baseUrl}`.replace(/\/+$/, '/');
+
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: provider, // 'google' | 'facebook'
           options: {
             redirectTo: redirectUrl
           }
         });
+
         if (error) throw error;
+
+        // Redirección explícita indispensable para navegadores móviles y webviews integrados
+        if (data?.url) {
+          window.location.href = data.url;
+        }
       } else {
-        // En modo Demo sin Supabase activo, iniciar sesión automáticamente con perfil de demostración
+        // En modo Demo sin Supabase activo
         login(provider === 'facebook' ? 'sofia.rossi@padelzone.app' : 'demo@padelzone.app', 'demo123');
         navigate('/');
       }
     } catch (err) {
-      setError(err.message);
+      console.error('Error al iniciar sesión con OAuth:', err);
+      setError(err.message || 'No se pudo iniciar sesión con Google. Reintenta.');
     } finally {
       setLoadingProvider(null);
     }
