@@ -335,8 +335,10 @@ CREATE POLICY "Users Create Chats" ON public.chats FOR INSERT WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Users Read Own Messages" ON public.messages;
 DROP POLICY IF EXISTS "Users Send Messages" ON public.messages;
+DROP POLICY IF EXISTS "Users Mark Messages Read" ON public.messages;
 CREATE POLICY "Users Read Own Messages" ON public.messages FOR SELECT USING (true);
 CREATE POLICY "Users Send Messages" ON public.messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users Mark Messages Read" ON public.messages FOR UPDATE USING (auth.uid() = receiver_id);
 
 -- ====================================================================
 -- SEED DATA INICIAL (CLUBES Y CANCHAS)

@@ -323,7 +323,7 @@ export default function AppLayout() {
             <div className="space-y-3">
               {onlineUsers.map(u => (
                 <div key={u.id} className="flex items-center justify-between gap-2.5 group">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <Link to={`/profile/${u.id}`} className="flex items-center gap-3 min-w-0">
                     <div className="relative shrink-0">
                       <img src={u.avatar_url} alt={u.full_name} className="w-9 h-9 rounded-xl object-cover border border-slate-700/80" />
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0b1322] absolute -bottom-0.5 -right-0.5" />
@@ -334,9 +334,9 @@ export default function AppLayout() {
                       </p>
                       <p className="text-[11px] text-slate-400 truncate">{u.status_text}</p>
                     </div>
-                  </div>
+                  </Link>
                   <Link
-                    to="/chat"
+                    to={`/chat?userId=${u.id}`}
                     className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-emerald-500 hover:text-slate-950 text-slate-300 flex items-center justify-center transition-all shrink-0 border border-slate-700/60"
                     title="Enviar mensaje"
                   >

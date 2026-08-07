@@ -531,6 +531,20 @@ export const padelService = {
       throw new Error(`Error enviando mensaje: ${error.message}`);
     }
     return data;
+  },
+
+  async markMessagesAsRead(otherUserId) {
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id || !otherUserId) return;
+
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .eq('sender_id', otherUserId)
+      .eq('receiver_id', currentUser.id)
+      .eq('is_read', false);
+
+    if (error) console.warn('Error al marcar mensajes como leídos:', error.message);
   }
 };
 

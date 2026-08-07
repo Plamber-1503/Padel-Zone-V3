@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { padelService } from '@/api/padelService';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { Send, MessageCircle, Search, ArrowLeft, User, ShieldCheck } from 'lucide-react';
+import { Send, MessageCircle, Search, ArrowLeft, User, ShieldCheck, Check, CheckCheck } from 'lucide-react';
 
 export default function ChatPage() {
   const { user } = useAuth();
@@ -62,6 +62,12 @@ export default function ChatPage() {
       const msgs = await padelService.getChatMessages(selectedUser.id);
       if (isMounted) {
         setMessages(msgs || []);
+
+        // Marcar como leídos los mensajes que el otro usuario nos envió, ya que estamos viendo esta conversación
+        const hasUnread = (msgs || []).some(m => m.sender_id === selectedUser.id && m.receiver_id === user.id && !m.is_read);
+        if (hasUnread) {
+          padelService.markMessagesAsRead(selectedUser.id);
+        }
 
         // Si vino un mensaje inicial por URL (ej: al sumar a un partido) y aún no se envió
         if (initialMsg && initialMsg.trim()) {
@@ -209,14 +215,18 @@ export default function ChatPage() {
                       : 'hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
-                  <div className="relative shrink-0">
+                  <Link
+                    to={`/profile/${u.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="relative shrink-0"
+                  >
                     <img
                       src={u.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
                       alt=""
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-700"
+                      className="w-10 h-10 rounded-xl object-cover border border-slate-700 hover:opacity-80 transition-opacity"
                     />
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 absolute -bottom-0.5 -right-0.5" />
-                  </div>
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <p className={`font-bold text-xs truncate ${isSelected ? 'text-emerald-400' : 'text-white'}`}>
                       {u.full_name}
@@ -251,17 +261,19 @@ export default function ChatPage() {
                 <ArrowLeft className="w-4 h-4" />
               </button>
 
-              <img
-                src={selectedUser.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
-                alt=""
-                className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-              />
-              <div>
-                <p className="font-bold text-sm text-white flex items-center gap-1.5">
+              <Link to={`/profile/${selectedUser.id}`} className="shrink-0">
+                <img
+                  src={selectedUser.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
+                  alt=""
+                  className="w-10 h-10 rounded-xl object-cover border border-slate-700 hover:opacity-80 transition-opacity"
+                />
+              </Link>
+              <Link to={`/profile/${selectedUser.id}`}>
+                <p className="font-bold text-sm text-white flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
                   {selectedUser.full_name}
                 </p>
                 <p className="text-[10px] text-emerald-400 font-semibold">{selectedUser.level || 'Jugador PadelZone'}</p>
-              </div>
+              </Link>
             </div>
           </div>
         ) : (
@@ -300,8 +312,15 @@ export default function ChatPage() {
                 >
                   {m.text}
                 </div>
-                <span className="text-[9px] text-slate-400 mt-1 px-1">
+                <span className="text-[9px] text-slate-400 mt-1 px-1 flex items-center gap-1">
                   {isMine ? 'Vos' : (selectedUser?.full_name || 'Remitente')}
+                  {isMine && (
+                    m.is_read ? (
+                      <CheckCheck className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Check className="w-3 h-3 text-slate-500" />
+                    )
+                  )}
                 </span>
               </div>
             );

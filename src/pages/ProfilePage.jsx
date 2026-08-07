@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
-import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2 } from 'lucide-react';
+import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2, MessageCircle } from 'lucide-react';
 
 export default function ProfilePage() {
   return (
@@ -15,13 +16,23 @@ export default function ProfilePage() {
 }
 
 function ProfilePageContent() {
-  const { user } = useAuth();
+  const { id } = useParams();
+  const { user: authUser, toggleFollow } = useAuth();
   const [, setRefreshKey] = useState(0);
   const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
 
   const { data: postsData = [] } = usePosts('all');
   const { data: openMatchesData = [] } = useOpenMatches();
   const { data: availabilitiesData = [] } = useAvailabilities();
+  const { data: usersData = [] } = useUsers();
+
+  const isOwnProfile = !id || id === authUser?.id;
+  const user = isOwnProfile ? authUser : (usersData.find(u => u?.id === id) || authUser);
+  const isFollowing = !isOwnProfile && authUser?.following_ids?.includes(user?.id);
+
+  const handleToggleFollow = () => {
+    if (user?.id) toggleFollow(user.id);
+  };
 
   const myPosts = user?.id ? postsData.filter(p => p && p.author_id === user.id) : [];
   const myAvailability = user?.id ? availabilitiesData.find(a => a.user_id === user.id || a.court_id === user.id) : null;
@@ -60,15 +71,38 @@ function ProfilePageContent() {
             </div>
           </div>
 
-          {/* Botón Disponible para jugar */}
+          {/* Botón Disponible para jugar (dueño) o Enviar mensaje (visitante) */}
           <div className="shrink-0">
-            <button
-              onClick={() => setIsAvailabilityModalOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer"
-            >
-              <UserCheck className="w-4 h-4 stroke-[2.5]" />
-              <span>{myAvailability ? 'Editar Disponibilidad' : 'Disponible para jugar'}</span>
-            </button>
+            {isOwnProfile ? (
+              <button
+                onClick={() => setIsAvailabilityModalOpen(true)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer"
+              >
+                <UserCheck className="w-4 h-4 stroke-[2.5]" />
+                <span>{myAvailability ? 'Editar Disponibilidad' : 'Disponible para jugar'}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleFollow}
+                  className={`px-5 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 transition-all hover:scale-105 cursor-pointer border ${
+                    isFollowing
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                      : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4 stroke-[2.5]" />
+                  <span>{isFollowing ? 'Siguiendo' : 'Seguir'}</span>
+                </button>
+                <Link
+                  to={`/chat?userId=${user?.id}`}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all hover:scale-105"
+                >
+                  <MessageCircle className="w-4 h-4 stroke-[2.5]" />
+                  <span>Enviar Mensaje</span>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -163,33 +197,35 @@ function ProfilePageContent() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setIsAvailabilityModalOpen(true)}
-                className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                <span>Editar</span>
-              </button>
-              <button
-                onClick={handleRemoveAvailability}
-                className="bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs font-bold px-3 py-2 rounded-xl border border-slate-700 hover:border-red-500/40 flex items-center gap-1.5 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Desactivar</span>
-              </button>
-            </div>
+            {isOwnProfile && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setIsAvailabilityModalOpen(true)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+                <button
+                  onClick={handleRemoveAvailability}
+                  className="bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs font-bold px-3 py-2 rounded-xl border border-slate-700 hover:border-red-500/40 flex items-center gap-1.5 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Desactivar</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── PAREJA DE EQUIPO HABITUAL ─────────────────────────────────── */}
-      <TeamPartnerSection user={user} onPartnerUpdated={reloadData} />
+      {/* ── PAREJA DE EQUIPO HABITUAL (solo en el propio perfil) ────────── */}
+      {isOwnProfile && <TeamPartnerSection user={user} onPartnerUpdated={reloadData} />}
 
       {/* Active Searches / Open Matches Section */}
       <div className="space-y-3">
         <h3 className="font-bold text-base text-white flex items-center gap-2">
-          <Zap className="w-4 h-4 text-amber-400 fill-amber-400" /> Mis Búsquedas y Partidos Abiertos
+          <Zap className="w-4 h-4 text-amber-400 fill-amber-400" /> {isOwnProfile ? 'Mis Búsquedas y Partidos Abiertos' : `Búsquedas y Partidos Abiertos de ${user?.full_name?.split(' ')[0] || 'este jugador'}`}
         </h3>
 
         {myOpenMatches.map(m => {
@@ -211,7 +247,7 @@ function ProfilePageContent() {
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-                  Organizado por ti
+                  {isOwnProfile ? 'Organizado por ti' : `Organizado por ${user?.full_name?.split(' ')[0] || 'este jugador'}`}
                 </span>
               </div>
             </div>
@@ -220,7 +256,7 @@ function ProfilePageContent() {
 
         {myOpenMatches.length === 0 && (
           <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 text-center text-slate-400 text-xs">
-            No tienes búsquedas activas de jugador o pareja en este momento.
+            {isOwnProfile ? 'No tienes búsquedas activas de jugador o pareja en este momento.' : 'Este jugador no tiene búsquedas activas en este momento.'}
           </div>
         )}
       </div>
@@ -228,7 +264,7 @@ function ProfilePageContent() {
       {/* User's posts */}
       <div className="space-y-4 pt-2">
         <h3 className="font-bold text-base text-white flex items-center gap-2">
-          <Flame className="w-4 h-4 text-emerald-400" /> Mis Publicaciones & Resultados
+          <Flame className="w-4 h-4 text-emerald-400" /> {isOwnProfile ? 'Mis Publicaciones & Resultados' : 'Publicaciones & Resultados'}
         </h3>
 
         {myPosts.map(post => {
@@ -238,7 +274,7 @@ function ProfilePageContent() {
 
         {myPosts.length === 0 && (
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-xs">
-            Aún no realizaste publicaciones.
+            {isOwnProfile ? 'Aún no realizaste publicaciones.' : 'Este jugador todavía no realizó publicaciones.'}
           </div>
         )}
       </div>

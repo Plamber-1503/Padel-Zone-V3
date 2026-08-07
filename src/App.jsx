@@ -44,6 +44,7 @@ export default function App() {
             <Route path="/tournaments" element={<TournamentsPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/profile/:id" element={<ProfilePage />} />
             <Route path="/club-dashboard" element={<ClubDashboardPage />} />
           </Route>
 
