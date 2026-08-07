@@ -15,7 +15,9 @@ export function AuthProvider({ children }) {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             const profile = await padelService.getUserById(session.user.id);
-            setUser(profile || session.user);
+            const currentUserObj = profile || session.user;
+            setUser(currentUserObj);
+            padelService.setCurrentUser(currentUserObj);
           } else {
             setUser(padelService.getCurrentUser());
           }
@@ -24,9 +26,12 @@ export function AuthProvider({ children }) {
           const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
               const profile = await padelService.getUserById(session.user.id);
-              setUser(profile || session.user);
+              const currentUserObj = profile || session.user;
+              setUser(currentUserObj);
+              padelService.setCurrentUser(currentUserObj);
             } else {
               setUser(null);
+              localStorage.removeItem('pz3_current_user');
             }
           });
 

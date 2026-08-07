@@ -451,32 +451,54 @@ export const padelService = {
     return data;
   },
 
+  async getCurrentAuthUser() {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await this.getUserById(session.user.id);
+          return profile || session.user;
+        }
+      } catch (e) {
+        console.warn('Error al obtener sesión de Supabase:', e);
+      }
+    }
+    return this.getCurrentUser();
+  },
+
   // 9. CHATS & MESSAGES
   async getChatMessages(otherUserId) {
-    const currentUser = this.getCurrentUser();
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id || !otherUserId) return [];
+
     const { data, error } = await supabase
       .from('messages')
       .select('*')
       .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUser.id})`)
       .order('created_at', { ascending: true });
 
-    if (error || !data) return [];
-    return data;
+    if (error) {
+      console.warn('Error al obtener mensajes:', error.message);
+      return [];
+    }
+    return data || [];
   },
 
   async sendChatMessage(otherUserId, text) {
-    const currentUser = this.getCurrentUser();
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id || !otherUserId) throw new Error('Usuario no autenticado');
+
     const { data, error } = await supabase.from('messages').insert({
       sender_id: currentUser.id,
       receiver_id: otherUserId,
-      text
+      text: text.trim()
     }).select().single();
 
     if (error) {
-      console.warn('Supabase message send fallback:', error.message);
-      return [{ id: `cm-${Date.now()}`, sender_id: currentUser.id, text, created_at: new Date().toISOString() }];
+      console.error('Error enviando mensaje a Supabase:', error.message);
+      throw new Error(`Error enviando mensaje: ${error.message}`);
     }
-    return [data];
+    return data;
   }
 };
 
