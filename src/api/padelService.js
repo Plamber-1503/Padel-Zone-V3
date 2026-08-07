@@ -2,7 +2,7 @@
  * padelService.js — Capa de Servicios 100% Supabase Client + React Query Remote State Management
  */
 
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   INITIAL_USERS,
