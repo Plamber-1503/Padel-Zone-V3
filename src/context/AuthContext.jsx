@@ -9,6 +9,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    let subscription = null;
+
     async function initAuth() {
       try {
         if (isSupabaseConfigured && supabase) {
@@ -33,13 +36,21 @@ export function AuthProvider({ children }) {
           }
 
           const { data: { session } } = await supabase.auth.getSession();
+          if (!isMounted) return;
+
           if (session?.user) {
             const profile = await padelService.ensureProfile(session.user);
             const currentUserObj = profile || session.user;
             setUser(currentUserObj);
             padelService.setCurrentUser(currentUserObj);
           } else {
-            setUser(padelService.getCurrentUser());
+            // Auditoría 2026-08-09: acá antes se hacía setUser(padelService.getCurrentUser()),
+            // que devuelve un usuario de prueba cacheado en localStorage (o el mock por
+            // defecto) cuando NO hay sesión real de Supabase. Eso dejaba "entrar" a la app
+            // como un usuario de mentira sin haberse autenticado nunca — sin sesión real,
+            // no hay usuario, punto.
+            setUser(null);
+            localStorage.removeItem('pz3_current_user');
           }
 
           // Escuchar cambios de sesión en vivo
@@ -54,19 +65,27 @@ export function AuthProvider({ children }) {
               localStorage.removeItem('pz3_current_user');
             }
           });
-
-          return () => authListener?.subscription?.unsubscribe();
+          subscription = authListener?.subscription;
         } else {
-          setUser(padelService.getCurrentUser());
+          setUser(null);
         }
       } catch (e) {
         console.error('Error al inicializar sesión:', e);
+        if (isMounted) setUser(null);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     initAuth();
+
+    // Auditoría 2026-08-09: antes este cleanup vivía dentro de initAuth (una
+    // función async), así que useEffect nunca lo recibía y el listener de
+    // Supabase Auth quedaba suscripto para siempre en cada remount.
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const login = async (email, password) => {
