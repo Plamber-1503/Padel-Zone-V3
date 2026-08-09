@@ -16,11 +16,19 @@ if (!isSupabaseConfigured) {
   );
 }
 
-// Inicialización del cliente Supabase con soporte PKCE para compatibilidad con HashRouter en GitHub Pages
+// Auditoría 2026-08-09: 'pkce' requiere que el navegador conserve un
+// "code_verifier" en localStorage mientras el usuario va y vuelve de
+// Google/Facebook — en el sitio publicado en GitHub Pages ese dato se
+// estaba perdiendo en el camino, y el login con Google quedaba en un loop
+// silencioso (vuelve con ?code=... pero el intercambio por sesión falla sin
+// avisar). 'implicit' evita ese paso intermedio: el token vuelve directo en
+// la URL de redirección, sin nada que conservar entre medio — por eso el
+// código de AuthContext.jsx ya sabía interceptar '#access_token=' antes de
+// que HashRouter reescriba la URL.
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        flowType: 'pkce',
+        flowType: 'implicit',
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
