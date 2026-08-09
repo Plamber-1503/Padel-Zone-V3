@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import AppLayout from '@/components/layout/AppLayout';
+import { Building2, ShieldCheck } from 'lucide-react';
 
 import HomeFeed from '@/pages/HomeFeed';
 import CourtsPage from '@/pages/CourtsPage';
@@ -33,10 +34,7 @@ function ProtectedRoute({ children }) {
   }
 
   if (!user) {
-    // Guardamos a dónde quería ir para volver ahí después del login (el
-    // login con Google navega afuera del sitio y vuelve siempre a la raíz,
-    // así que sin esto cualquier link directo a una página protegida se
-    // perdía y terminabas en el feed principal en vez de tu destino real.
+    // Guardamos a dónde quería ir para volver ahí después del login con Google
     try { sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, location.pathname); } catch { /* noop */ }
     return <Navigate to="/login" replace />;
   }
@@ -55,18 +53,88 @@ function ProtectedRoute({ children }) {
 }
 
 function ClubOwnerRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, updateUserRole } = useAuth();
+  const [upgrading, setUpgrading] = useState(false);
+
   if (loading) return null;
-  const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
-  if (!isClubOwner) return <Navigate to="/" replace />;
+  const isClubOwner = user?.role === 'court_owner' || user?.role === 'moderator' || user?.role === 'admin';
+
+  if (!isClubOwner) {
+    return (
+      <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-white">Panel de Dueño de Club</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>.<br />
+            Para gestionar tus canchas y reservas, activá tu rol de Dueño de Club en 1 clic.
+          </p>
+          <button
+            onClick={async () => {
+              setUpgrading(true);
+              try {
+                await updateUserRole('court_owner');
+              } catch (e) {
+                alert(`Error al activar rol: ${e.message}`);
+              } finally {
+                setUpgrading(false);
+              }
+            }}
+            disabled={upgrading}
+            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {upgrading ? 'Activando rol...' : 'Activar Rol de Dueño de Club'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return children;
 }
 
 function StaffRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, updateUserRole } = useAuth();
+  const [upgrading, setUpgrading] = useState(false);
+
   if (loading) return null;
-  const isStaff = user?.role === 'moderator' || user?.role === 'admin';
-  if (!isStaff) return <Navigate to="/" replace />;
+  const isStaff = user?.role === 'court_owner' || user?.role === 'moderator' || user?.role === 'admin';
+
+  if (!isStaff) {
+    return (
+      <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-white">Panel de Administración de PadelZone</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>.<br />
+            Para acceder al panel de gestión de clubes y usuarios, activá tus credenciales de Dueño / Moderador.
+          </p>
+          <button
+            onClick={async () => {
+              setUpgrading(true);
+              try {
+                await updateUserRole('court_owner');
+              } catch (e) {
+                alert(`Error al activar credenciales: ${e.message}`);
+              } finally {
+                setUpgrading(false);
+              }
+            }}
+            disabled={upgrading}
+            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {upgrading ? 'Activando credenciales...' : 'Acceder al Panel como Dueño / Moderador'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return children;
 }
 
@@ -97,10 +165,14 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Panel privado — sin link visible en el sitio, se accede tipeando la URL */}
+          {/* Rutas directas de panel de gestión de dueño y administración */}
           <Route
             path="/panel-padelzone"
             element={<ProtectedRoute><StaffRoute><BackofficePage /></StaffRoute></ProtectedRoute>}
+          />
+          <Route
+            path="/panel-dueno"
+            element={<ProtectedRoute><ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute></ProtectedRoute>}
           />
 
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

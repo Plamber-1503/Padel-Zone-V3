@@ -134,6 +134,27 @@ export const padelService = {
     return data || newProfile;
   },
 
+  async updateUserRole(newRole) {
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) throw new Error('Usuario no autenticado');
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', currentUser.id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Error al actualizar rol en Supabase:', error.message);
+      throw new Error(`Error actualizando rol: ${error.message}`);
+    }
+
+    const updatedUser = data || { ...currentUser, role: newRole };
+    this.setCurrentUser(updatedUser);
+    return updatedUser;
+  },
+
   async toggleFollow(targetId) {
     const current = this.getCurrentUser();
     let following = current.following_ids || [];
