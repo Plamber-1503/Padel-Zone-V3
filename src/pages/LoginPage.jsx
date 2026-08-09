@@ -1,16 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Mail, Lock, Sparkles } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loadingProvider, setLoadingProvider] = useState(null);
+
+  // Auditoría 2026-08-09: el login con Google vuelve a esta misma pantalla
+  // (redirectTo apunta a la raíz del sitio) y la sesión puede confirmarse
+  // unos instantes después de que React ya montó esta página — sin este
+  // efecto, la pantalla se quedaba mostrando el login aunque la sesión ya
+  // hubiera quedado establecida un momento más tarde.
+  useEffect(() => {
+    if (!user) return;
+    let target = '/';
+    try {
+      const pending = sessionStorage.getItem('pz3_post_login_redirect');
+      if (pending) {
+        sessionStorage.removeItem('pz3_post_login_redirect');
+        target = pending;
+      }
+    } catch { /* noop */ }
+    navigate(target, { replace: true });
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
