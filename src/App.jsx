@@ -1,6 +1,7 @@
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import AppLayout from '@/components/layout/AppLayout';
 
 import HomeFeed from '@/pages/HomeFeed';
@@ -29,7 +30,35 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function ClubOwnerRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
+  if (!isClubOwner) return <Navigate to="/" replace />;
+  return children;
+}
+
+function ConfigMissingScreen() {
+  return (
+    <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+      <div className="max-w-md text-center space-y-3">
+        <h1 className="text-lg font-bold text-white">PadelZone no está configurado</h1>
+        <p className="text-sm text-slate-400">
+          Faltan las variables de entorno <code className="text-emerald-400">VITE_SUPABASE_URL</code> y{' '}
+          <code className="text-emerald-400">VITE_SUPABASE_ANON_KEY</code>. Completalas en tu archivo{' '}
+          <code className="text-emerald-400">.env</code> (ver <code className="text-emerald-400">.env.example</code>)
+          antes de iniciar la app.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMissingScreen />;
+  }
+
   return (
     <AuthProvider>
       <Router>
@@ -45,7 +74,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/profile/:id" element={<ProfilePage />} />
-            <Route path="/club-dashboard" element={<ClubDashboardPage />} />
+            <Route path="/club-dashboard" element={<ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

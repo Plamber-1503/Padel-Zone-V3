@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno con credenciales reales (auditoría 2026-08-09:
+# .env estaba trackeado y commiteado con la URL/anon key de producción)
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

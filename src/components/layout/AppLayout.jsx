@@ -286,8 +286,8 @@ export default function AppLayout() {
             <div className="pt-2 border-t border-slate-800">
               <button
                 onClick={() => {
-                  const isAuth = localStorage.getItem('pz3_club_owner_auth') === 'true';
-                  if (isAuth) {
+                  const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
+                  if (isClubOwner) {
                     navigate('/club-dashboard');
                   } else {
                     setIsClubAuthModalOpen(true);

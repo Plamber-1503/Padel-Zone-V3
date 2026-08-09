@@ -1,7 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
+import { readFileSync, existsSync } from 'fs';
 
-const supabaseUrl = 'https://riddyrljzlzzikooetsz.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpZGR5cmxqemx6emlrb29ldHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Njc3ODEsImV4cCI6MjEwMTU0Mzc4MX0.d43jUV7zlYkr8JhsIbTgQRUyxuewrCgjsbXoCh0T8eM';
+// Auditoría 2026-08-09: antes las credenciales reales estaban hardcodeadas
+// acá. Node no carga .env automáticamente, así que lo leemos a mano (sin
+// sumar la dependencia dotenv) y si falta, avisamos en vez de seguir.
+if (existsSync('.env')) {
+  for (const line of readFileSync('.env', 'utf-8').split('\n')) {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = (match[2] || '').trim();
+    }
+  }
+}
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Faltan VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Completá tu archivo .env (ver .env.example).');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

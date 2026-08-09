@@ -23,9 +23,13 @@ export default function PostCard({ post, onPostUpdated }) {
   const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
   const isMatchFull = linkedMatch && (linkedMatch.joined_players?.length || 0) >= linkedMatch.max_players;
 
-  const handleLike = () => {
-    padelService.toggleLikePost(post.id);
-    if (onPostUpdated) onPostUpdated();
+  const handleLike = async () => {
+    try {
+      await padelService.toggleLikePost(post.id);
+      if (onPostUpdated) onPostUpdated();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleJoinMatch = async () => {

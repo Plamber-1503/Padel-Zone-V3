@@ -66,19 +66,10 @@ export const padelService = {
       if (profile) return this.setCurrentUser(profile);
     }
 
-    // Consulta directa a la tabla public.profiles de Supabase
-    const { data: profiles, error: profileErr } = await supabase.from('profiles').select('*');
-    if (!profileErr && profiles && profiles.length > 0) {
-      const term = (emailOrUsername || '').toLowerCase().trim();
-      const found = profiles.find(p => p.email?.toLowerCase() === term || p.full_name?.toLowerCase() === term);
-      if (found) return this.setCurrentUser(found);
-    }
-
-    const localUsers = INITIAL_USERS;
-    const term = (emailOrUsername || '').toLowerCase().trim();
-    const foundLocal = localUsers.find(u => u.email?.toLowerCase() === term || u.username?.toLowerCase() === term || u.full_name?.toLowerCase() === term);
-    if (foundLocal) return this.setCurrentUser(foundLocal);
-
+    // Nota (auditoría 2026-08-09): se eliminó el fallback que buscaba el
+    // usuario en profiles/mock data por email o nombre y lo logueaba sin
+    // verificar contraseña. Si signInWithPassword no autentica, es un
+    // login inválido — no hay camino alternativo que omita la verificación.
     throw new Error('Usuario no encontrado o contraseña incorrecta');
   },
 
@@ -386,19 +377,15 @@ export const padelService = {
   },
 
   async toggleLikePost(postId) {
-    const currentUser = this.getCurrentUser();
-    const posts = await this.getPosts('all');
-    const targetPost = posts.find(p => p.id === postId);
-    let newLikes = [];
-
-    if (targetPost) {
-      const likes = targetPost.likes || [];
-      const alreadyLiked = likes.includes(currentUser.id);
-      newLikes = alreadyLiked ? likes.filter(id => id !== currentUser.id) : [...likes, currentUser.id];
+    // Alterna el like vía función server-side (public.toggle_post_like) para
+    // que sea atómico: evita que dos "me gusta" simultáneos se pisen entre sí,
+    // y no requiere abrir el UPDATE de posts a usuarios que no son el autor.
+    const { data, error } = await supabase.rpc('toggle_post_like', { p_post_id: postId });
+    if (error) {
+      console.error('Error al dar me gusta:', error.message);
+      throw new Error(`Error al dar me gusta: ${error.message}`);
     }
-
-    const { data } = await supabase.from('posts').update({ likes: newLikes }).eq('id', postId).select().single();
-    return data || posts.map(p => p.id === postId ? { ...p, likes: newLikes } : p);
+    return data;
   },
 
   // 7. OPEN MATCHES & MATCH PLAYERS
@@ -451,26 +438,22 @@ export const padelService = {
     const match = await this.getOpenMatchById(matchId);
     if (!match) throw new Error('Partido no encontrado');
 
+    // Solo se inserta en match_players — open_matches.joined_players y status
+    // se recalculan server-side vía el trigger sync_open_match_players, de
+    // forma atómica. Esto evita que dos jugadores sumándose casi a la vez se
+    // pisen entre sí (antes el cliente leía y reescribía el array a mano).
     const { error } = await supabase.from('match_players').insert({
       match_id: matchId,
       user_id: currentUser.id,
       slot_index: (match.joined_players?.length || 1) + 1
     });
 
-    if (error && error.code === '23505') {
-      throw new Error('Ya estás anotado en este partido');
+    if (error) {
+      if (error.code === '23505') throw new Error('Ya estás anotado en este partido');
+      throw new Error(`Error al sumarte al partido: ${error.message}`);
     }
 
-    const updatedJoined = [
-      ...(match.joined_players || []),
-      { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url }
-    ];
-
-    // Cierra automáticamente la búsqueda cuando se confirma el jugador/pareja que faltaba
-    const newStatus = updatedJoined.length >= (match.max_players || 4) ? 'completed' : match.status;
-
-    const { data } = await supabase.from('open_matches').update({ joined_players: updatedJoined, status: newStatus }).eq('id', matchId).select().single();
-    return data || match;
+    return this.getOpenMatchById(matchId);
   },
 
   async updateOpenMatch(matchId, updates) {

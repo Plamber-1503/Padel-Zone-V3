@@ -73,9 +73,9 @@ export default function ClubDashboardPage() {
     alert(`¡Cancha "${createdCourt.name}" agregada con éxito a la oferta del club!`);
   };
 
-  // Salir de la sesión de socio
+  // Volver al feed principal (el acceso de socio ahora depende de profiles.role,
+  // no de una bandera local — no hay "sesión de socio" separada que cerrar)
   const handleLogoutSocio = () => {
-    localStorage.removeItem('pz3_club_owner_auth');
     navigate('/');
   };
 

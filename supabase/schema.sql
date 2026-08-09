@@ -321,6 +321,10 @@ DROP POLICY IF EXISTS "Public Read Posts" ON public.posts;
 CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
 
 -- Permisos de escritura / actualización por propietario
+-- ── Auditoría 2026-08-09: políticas reescritas para exigir auth.uid() real
+--    contra el dueño de cada fila. Antes varias usaban USING (true) o permitían
+--    auth.uid() IS NULL, dejando lectura/escritura pública sin autenticación
+--    sobre mensajes, chats, reservas, posts y partidos abiertos.
 DROP POLICY IF EXISTS "Users Update Own Profile" ON public.profiles;
 CREATE POLICY "Users Update Own Profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
@@ -330,44 +334,138 @@ DROP POLICY IF EXISTS "Users Update Own Bookings" ON public.bookings;
 DROP POLICY IF EXISTS "Public Read Bookings" ON public.bookings;
 DROP POLICY IF EXISTS "Public Create Bookings" ON public.bookings;
 DROP POLICY IF EXISTS "Public Delete Bookings" ON public.bookings;
+DROP POLICY IF EXISTS "Users Delete Own Bookings" ON public.bookings;
 
+-- La lectura de turnos sigue siendo pública: se necesita para mostrar qué
+-- horarios están ocupados en el calendario de cada cancha a cualquier visitante.
 CREATE POLICY "Public Read Bookings" ON public.bookings FOR SELECT USING (true);
-CREATE POLICY "Users Create Bookings" ON public.bookings FOR INSERT WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
-CREATE POLICY "Public Delete Bookings" ON public.bookings FOR DELETE USING (true);
-CREATE POLICY "Users Update Own Bookings" ON public.bookings FOR UPDATE USING (true);
+CREATE POLICY "Users Create Bookings" ON public.bookings FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users Update Own Bookings" ON public.bookings FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users Delete Own Bookings" ON public.bookings FOR DELETE USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Users Create Open Matches" ON public.open_matches;
 DROP POLICY IF EXISTS "Hosts Update Open Matches" ON public.open_matches;
-CREATE POLICY "Users Create Open Matches" ON public.open_matches FOR INSERT WITH CHECK (auth.uid() = host_id OR auth.uid() IS NULL);
-CREATE POLICY "Hosts Update Open Matches" ON public.open_matches FOR UPDATE USING (auth.uid() = host_id OR auth.uid() IS NULL);
+CREATE POLICY "Users Create Open Matches" ON public.open_matches FOR INSERT WITH CHECK (auth.uid() = host_id);
+CREATE POLICY "Hosts Update Open Matches" ON public.open_matches FOR UPDATE USING (auth.uid() = host_id);
 
+-- match_players: cada jugador solo puede anotarse/editar su propia fila.
+-- La sincronización de open_matches.joined_players/status ante altas y bajas
+-- corre server-side vía el trigger public.sync_open_match_players (más abajo),
+-- así se evita la condición de carrera de dos jugadores sumándose a la vez.
 DROP POLICY IF EXISTS "Users Join Match Players" ON public.match_players;
 DROP POLICY IF EXISTS "Users Update Match Players" ON public.match_players;
-CREATE POLICY "Users Join Match Players" ON public.match_players FOR INSERT WITH CHECK (true);
-CREATE POLICY "Users Update Match Players" ON public.match_players FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Users Delete Own Match Player Row" ON public.match_players;
+CREATE POLICY "Users Join Match Players" ON public.match_players FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users Update Match Players" ON public.match_players FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users Delete Own Match Player Row" ON public.match_players FOR DELETE USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Users Create Posts" ON public.posts;
 DROP POLICY IF EXISTS "Users Update Own Posts" ON public.posts;
-CREATE POLICY "Users Create Posts" ON public.posts FOR INSERT WITH CHECK (true);
-CREATE POLICY "Users Update Own Posts" ON public.posts FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Users Delete Own Posts" ON public.posts;
+CREATE POLICY "Users Create Posts" ON public.posts FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Users Update Own Posts" ON public.posts FOR UPDATE USING (auth.uid() = author_id);
+CREATE POLICY "Users Delete Own Posts" ON public.posts FOR DELETE USING (auth.uid() = author_id);
+-- Nota: "dar me gusta" ya NO pasa por un UPDATE directo del cliente sobre esta
+-- tabla (eso hubiera requerido reabrir el UPDATE a cualquier usuario). En su
+-- lugar usa la función public.toggle_post_like (SECURITY DEFINER, más abajo),
+-- que también resuelve la condición de carrera de likes concurrentes.
 
 DROP POLICY IF EXISTS "Users Register Tournaments" ON public.tournament_registrations;
 DROP POLICY IF EXISTS "Users Read Tournament Registrations" ON public.tournament_registrations;
-CREATE POLICY "Users Register Tournaments" ON public.tournament_registrations FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users Register Tournaments" ON public.tournament_registrations FOR INSERT WITH CHECK (auth.uid() = player1_id);
 CREATE POLICY "Users Read Tournament Registrations" ON public.tournament_registrations FOR SELECT USING (true);
 
 -- Mensajes y Chats solo visibles para participantes (emisor / receptor)
 DROP POLICY IF EXISTS "Users Read Own Chats" ON public.chats;
 DROP POLICY IF EXISTS "Users Create Chats" ON public.chats;
-CREATE POLICY "Users Read Own Chats" ON public.chats FOR SELECT USING (true);
-CREATE POLICY "Users Create Chats" ON public.chats FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users Read Own Chats" ON public.chats FOR SELECT USING (auth.uid() = user1_id OR auth.uid() = user2_id);
+CREATE POLICY "Users Create Chats" ON public.chats FOR INSERT WITH CHECK (auth.uid() = user1_id OR auth.uid() = user2_id);
 
 DROP POLICY IF EXISTS "Users Read Own Messages" ON public.messages;
 DROP POLICY IF EXISTS "Users Send Messages" ON public.messages;
 DROP POLICY IF EXISTS "Users Mark Messages Read" ON public.messages;
-CREATE POLICY "Users Read Own Messages" ON public.messages FOR SELECT USING (true);
-CREATE POLICY "Users Send Messages" ON public.messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users Read Own Messages" ON public.messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+CREATE POLICY "Users Send Messages" ON public.messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
 CREATE POLICY "Users Mark Messages Read" ON public.messages FOR UPDATE USING (auth.uid() = receiver_id);
+
+-- ====================================================================
+-- FUNCIONES SERVER-SIDE (SECURITY DEFINER) — Fase 0, 2026-08-09
+-- Reemplazan los UPDATE directos del cliente que antes exigían políticas
+-- RLS permisivas ("USING (true)") sobre open_matches y posts.
+-- ====================================================================
+
+-- Mantiene open_matches.joined_players y status sincronizados de forma
+-- atómica a partir de match_players (fuente de verdad), eliminando la
+-- condición de carrera de dos jugadores sumándose casi al mismo tiempo.
+CREATE OR REPLACE FUNCTION public.sync_open_match_players()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_match_id UUID := COALESCE(NEW.match_id, OLD.match_id);
+  v_max_players INT;
+  v_joined JSONB;
+  v_count INT;
+BEGIN
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', p.id,
+           'name', p.full_name,
+           'avatar', p.avatar_url
+         ) ORDER BY mp.slot_index), '[]'::jsonb),
+         count(*)
+    INTO v_joined, v_count
+    FROM public.match_players mp
+    JOIN public.profiles p ON p.id = mp.user_id
+   WHERE mp.match_id = v_match_id AND mp.status <> 'declined';
+
+  SELECT max_players INTO v_max_players FROM public.open_matches WHERE id = v_match_id;
+
+  UPDATE public.open_matches
+     SET joined_players = v_joined,
+         status = CASE
+           WHEN status = 'open' AND v_count >= COALESCE(v_max_players, 4) THEN 'completed'
+           WHEN status = 'completed' AND v_count < COALESCE(v_max_players, 4) THEN 'open'
+           ELSE status
+         END
+   WHERE id = v_match_id;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_match_players_change ON public.match_players;
+CREATE TRIGGER on_match_players_change
+  AFTER INSERT OR UPDATE OR DELETE ON public.match_players
+  FOR EACH ROW EXECUTE FUNCTION public.sync_open_match_players();
+
+-- Alterna el "me gusta" del usuario autenticado sobre un post en una única
+-- sentencia UPDATE atómica (evita la carrera de leer-modificar-escribir que
+-- hacía el cliente antes, y no requiere abrir UPDATE de posts a terceros).
+CREATE OR REPLACE FUNCTION public.toggle_post_like(p_post_id UUID)
+RETURNS public.posts AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_row public.posts;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Debés iniciar sesión para dar me gusta';
+  END IF;
+
+  UPDATE public.posts
+     SET likes = CASE
+           WHEN v_uid = ANY(likes) THEN array_remove(likes, v_uid)
+           ELSE array_append(likes, v_uid)
+         END
+   WHERE id = p_post_id
+   RETURNING * INTO v_row;
+
+  IF v_row IS NULL THEN
+    RAISE EXCEPTION 'Publicación no encontrada';
+  END IF;
+
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.toggle_post_like(UUID) TO authenticated;
 
 -- ====================================================================
 -- SEED DATA INICIAL (CLUBES Y CANCHAS)
