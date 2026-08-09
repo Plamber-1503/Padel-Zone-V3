@@ -12,6 +12,7 @@ import TournamentsPage from '@/pages/TournamentsPage';
 import ChatPage from '@/pages/ChatPage';
 import ProfilePage from '@/pages/ProfilePage';
 import ClubDashboardPage from '@/pages/ClubDashboardPage';
+import BackofficePage from '@/pages/BackofficePage';
 import LoginPage from '@/pages/LoginPage';
 
 function ProtectedRoute({ children }) {
@@ -35,6 +36,14 @@ function ClubOwnerRoute({ children }) {
   if (loading) return null;
   const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
   if (!isClubOwner) return <Navigate to="/" replace />;
+  return children;
+}
+
+function StaffRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  const isStaff = user?.role === 'moderator' || user?.role === 'admin';
+  if (!isStaff) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -64,6 +73,12 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+
+          {/* Panel privado — sin link visible en el sitio, se accede tipeando la URL */}
+          <Route
+            path="/panel-padelzone"
+            element={<ProtectedRoute><StaffRoute><BackofficePage /></StaffRoute></ProtectedRoute>}
+          />
 
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route path="/" element={<HomeFeed />} />

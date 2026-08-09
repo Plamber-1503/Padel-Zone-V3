@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'player', -- 'player' | 'court_owner' | 'admin'
+  role TEXT NOT NULL DEFAULT 'player', -- 'player' | 'court_owner' | 'moderator' | 'admin'
   level TEXT DEFAULT '4ta Categoría (Intermedio)',
   elo_rating INT DEFAULT 1200,
   bio TEXT DEFAULT '¡Apasionado del pádel!',
@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS public.clubs (
   followers_count INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Alta de clubes 2026-08-09: un jugador solicita sumar su club, queda
+-- "pending" hasta que un moderador/admin lo revisa desde el panel privado.
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'; -- 'pending' | 'approved' | 'rejected'
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS cuit TEXT;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS contact_email TEXT;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 
 -- --------------------------------------------------------------------
 -- 3. TABLA DE CANCHAS VINCULADAS A CLUBES (courts)
@@ -283,15 +292,72 @@ ALTER TABLE public.tournament_registrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
+-- Función helper (SECURITY DEFINER para no re-disparar RLS de forma recursiva)
+-- que devuelve el role del usuario autenticado. La usan las políticas de
+-- clubes/perfiles para distinguir moderador/admin del resto.
+CREATE OR REPLACE FUNCTION public.current_user_role()
+RETURNS TEXT
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.current_user_role() TO authenticated, anon;
+
 -- Lectura pública y permisos para catálogos, feeds, partidos y perfiles
+-- ── Auditoría 2026-08-09: "Public Read Profiles" exponía el email de TODOS
+--    los usuarios a cualquier visitante sin sesión. Ahora solo tu propia fila
+--    (o un moderador/admin) puede leer la tabla profiles completa; el resto de
+--    la app usa la vista public.profiles_public (sin email) para listados.
 DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
-CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Public Read Profiles" ON public.profiles
+  FOR SELECT USING (auth.uid() = id OR public.current_user_role() IN ('admin', 'moderator'));
 
 DROP POLICY IF EXISTS "Public Create Profiles" ON public.profiles;
 CREATE POLICY "Public Create Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
 
+CREATE OR REPLACE VIEW public.profiles_public AS
+SELECT id, full_name, role, level, elo_rating, bio, avatar_url, matches_played,
+       matches_won, team_partner_id, following_ids, followers_count, created_at
+FROM public.profiles;
+
+GRANT SELECT ON public.profiles_public TO authenticated, anon;
+
+-- Clubes: público solo ve los aprobados; el dueño ve su propia solicitud en
+-- cualquier estado; moderador/admin ven todo (para poder revisar pendientes).
 DROP POLICY IF EXISTS "Public Read Clubs" ON public.clubs;
-CREATE POLICY "Public Read Clubs" ON public.clubs FOR SELECT USING (true);
+CREATE POLICY "Public Read Clubs" ON public.clubs
+  FOR SELECT USING (
+    status = 'approved'
+    OR owner_id = auth.uid()
+    OR public.current_user_role() IN ('admin', 'moderator')
+  );
+
+DROP POLICY IF EXISTS "Users Request Club" ON public.clubs;
+CREATE POLICY "Users Request Club" ON public.clubs
+  FOR INSERT WITH CHECK (auth.uid() = owner_id AND status = 'pending');
+
+DROP POLICY IF EXISTS "Staff Review Clubs" ON public.clubs;
+CREATE POLICY "Staff Review Clubs" ON public.clubs
+  FOR UPDATE USING (public.current_user_role() IN ('admin', 'moderator'));
+
+-- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
+-- (así el panel de socio que ya existe le funciona sin pasos manuales extra).
+CREATE OR REPLACE FUNCTION public.sync_club_owner_role()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'approved' AND OLD.status IS DISTINCT FROM 'approved' THEN
+    UPDATE public.profiles SET role = 'court_owner' WHERE id = NEW.owner_id AND role = 'player';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_club_approved ON public.clubs;
+CREATE TRIGGER on_club_approved
+  AFTER UPDATE ON public.clubs
+  FOR EACH ROW EXECUTE FUNCTION public.sync_club_owner_role();
 
 DROP POLICY IF EXISTS "Public Read Courts" ON public.courts;
 CREATE POLICY "Public Read Courts" ON public.courts FOR SELECT USING (true);

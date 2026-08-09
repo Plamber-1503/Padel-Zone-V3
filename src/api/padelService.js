@@ -74,16 +74,31 @@ export const padelService = {
   },
 
   // 1. PROFILES & USERS
+  // Nota (auditoría 2026-08-09): esto lee la vista profiles_public (sin email)
+  // porque se usa para listados públicos (sugeridos, en línea, buscador de chat).
+  // Nadie necesita ver el email de otro usuario para usar la app.
   async getUsers() {
-    const { data, error } = await supabase.from('profiles').select('*');
+    const { data, error } = await supabase.from('profiles_public').select('*');
     if (error || !data || data.length === 0) {
       return INITIAL_USERS;
     }
     return data;
   },
 
+  // Perfil PROPIO (login / sesión) — sí incluye email. RLS solo permite leer
+  // tu propia fila acá, así que no debe usarse para consultar a otro usuario.
   async getUserById(id) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+    if (error || !data) {
+      return INITIAL_USERS.find(u => u.id === id) || null;
+    }
+    return data;
+  },
+
+  // Perfil PÚBLICO de cualquier usuario (sin email) — para ver el perfil de
+  // otro jugador o elegir compañero de equipo.
+  async getPublicUserById(id) {
+    const { data, error } = await supabase.from('profiles_public').select('*').eq('id', id).maybeSingle();
     if (error || !data) {
       return INITIAL_USERS.find(u => u.id === id) || null;
     }
@@ -138,7 +153,7 @@ export const padelService = {
 
   async setTeamPartner(partnerId) {
     const current = this.getCurrentUser();
-    const partnerUser = await this.getUserById(partnerId);
+    const partnerUser = await this.getPublicUserById(partnerId);
     if (!partnerUser) throw new Error('Jugador no encontrado');
 
     const updatedUser = {
@@ -164,6 +179,7 @@ export const padelService = {
   },
 
   // 2. CLUBS (Establecimientos)
+  // RLS ya filtra: acá solo llegan clubes 'approved', más el propio si sos el dueño.
   async getClubs() {
     const { data, error } = await supabase.from('clubs').select('*');
     if (error || !data || data.length === 0) {
@@ -173,6 +189,111 @@ export const padelService = {
       ];
     }
     return data;
+  },
+
+  // 2b. ALTA DE CLUBES (solicitud de socio, revisión por moderador/admin)
+  async getMyClubApplication() {
+    const currentUser = this.getCurrentUser();
+    if (!currentUser?.id) return null;
+    const { data, error } = await supabase.from('clubs').select('*').eq('owner_id', currentUser.id).maybeSingle();
+    if (error) return null;
+    return data;
+  },
+
+  async requestClubMembership({ name, address, city, phone, cuit, contact_email }) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('clubs')
+      .insert({
+        owner_id: currentUser.id,
+        name,
+        address,
+        city: city || 'Buenos Aires',
+        phone: phone || null,
+        cuit: cuit || null,
+        contact_email: contact_email || currentUser.email || null,
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error al enviar la solicitud de club:', error.message);
+      throw new Error(`Error al enviar la solicitud: ${error.message}`);
+    }
+    return data;
+  },
+
+  // 2c. PANEL PRIVADO — solo accesible para role 'moderator' | 'admin' (RLS)
+  async getPendingClubs() {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`Error al leer solicitudes pendientes: ${error.message}`);
+    return data || [];
+  },
+
+  async getActiveClubsAdmin() {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('*')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`Error al leer clubes activos: ${error.message}`);
+    return data || [];
+  },
+
+  async approveClub(clubId) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('clubs')
+      .update({ status: 'approved', reviewed_by: currentUser.id, reviewed_at: new Date().toISOString(), rejection_reason: null })
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al aprobar el club: ${error.message}`);
+    return data;
+  },
+
+  async rejectClub(clubId, reason) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('clubs')
+      .update({ status: 'rejected', reviewed_by: currentUser.id, reviewed_at: new Date().toISOString(), rejection_reason: reason || null })
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al rechazar el club: ${error.message}`);
+    return data;
+  },
+
+  async getAllUsersAdmin() {
+    // A diferencia de getUsers(), esto lee la tabla real (con email) — RLS
+    // solo se lo permite a role 'admin' | 'moderator'.
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (error) throw new Error(`Error al leer usuarios: ${error.message}`);
+    return data || [];
+  },
+
+  async getBusinessMetrics() {
+    // Solo role 'admin' debería ver esto (se filtra también en la UI).
+    const [{ count: totalUsers }, { count: activeClubs }, { count: activeCourts }, { count: bookingsTotal }, { data: todayBookings }] = await Promise.all([
+      supabase.from('profiles').select('*', { count: 'exact', head: true }),
+      supabase.from('clubs').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+      supabase.from('courts').select('*', { count: 'exact', head: true }),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }),
+      supabase.from('bookings').select('id').eq('date', new Date().toISOString().slice(0, 10))
+    ]);
+
+    return {
+      totalUsers: totalUsers || 0,
+      activeClubs: activeClubs || 0,
+      activeCourts: activeCourts || 0,
+      bookingsTotal: bookingsTotal || 0,
+      bookingsToday: todayBookings?.length || 0
+    };
   },
 
   // 3. COURTS (Canchas de Pádel)
@@ -750,5 +871,72 @@ export function useSendChatMessage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['chatMessages', variables.otherUserId] });
     }
+  });
+}
+
+// ── Alta de clubes + panel privado (moderador/admin) ──────────────────────
+export function useMyClubApplication() {
+  return useQuery({
+    queryKey: ['my_club_application'],
+    queryFn: () => padelService.getMyClubApplication()
+  });
+}
+
+export function useRequestClubMembership() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (formData) => padelService.requestClubMembership(formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_application'] });
+    }
+  });
+}
+
+export function usePendingClubs() {
+  return useQuery({
+    queryKey: ['admin_pending_clubs'],
+    queryFn: () => padelService.getPendingClubs()
+  });
+}
+
+export function useActiveClubsAdmin() {
+  return useQuery({
+    queryKey: ['admin_active_clubs'],
+    queryFn: () => padelService.getActiveClubsAdmin()
+  });
+}
+
+export function useApproveClub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (clubId) => padelService.approveClub(clubId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_pending_clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_active_clubs'] });
+    }
+  });
+}
+
+export function useRejectClub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clubId, reason }) => padelService.rejectClub(clubId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_pending_clubs'] });
+    }
+  });
+}
+
+export function useAllUsersAdmin() {
+  return useQuery({
+    queryKey: ['admin_all_users'],
+    queryFn: () => padelService.getAllUsersAdmin()
+  });
+}
+
+export function useBusinessMetrics() {
+  return useQuery({
+    queryKey: ['admin_business_metrics'],
+    queryFn: () => padelService.getBusinessMetrics()
   });
 }

@@ -37,7 +37,6 @@ export default function ChatPage() {
       if (targetUserId) {
         targetUser = filtered.find(u =>
           u.id === targetUserId ||
-          u.email === targetUserId ||
           u.full_name?.toLowerCase().includes(targetUserId.toLowerCase())
         );
       }
@@ -163,7 +162,6 @@ export default function ChatPage() {
   const filteredUsers = searchQuery.trim()
     ? allUsers.filter(u =>
         (u.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (u.level || '').toLowerCase().includes(searchQuery.toLowerCase())
       )
     : allUsers;

@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useUsers, useUpcomingBooking } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
-import ClubOwnerLoginModal from '@/components/social/ClubOwnerLoginModal';
+import ClubApplicationModal from '@/components/social/ClubApplicationModal';
 import {
   Home,
   CalendarDays,
@@ -286,8 +286,7 @@ export default function AppLayout() {
             <div className="pt-2 border-t border-slate-800">
               <button
                 onClick={() => {
-                  const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
-                  if (isClubOwner) {
+                  if (user?.role === 'court_owner') {
                     navigate('/club-dashboard');
                   } else {
                     setIsClubAuthModalOpen(true);
@@ -541,8 +540,8 @@ export default function AppLayout() {
         })}
       </nav>
 
-      {/* Modal de Autenticación de Socio Club B2B */}
-      <ClubOwnerLoginModal
+      {/* Modal de Solicitud de Socio Club B2B */}
+      <ClubApplicationModal
         isOpen={isClubAuthModalOpen}
         onClose={() => setIsClubAuthModalOpen(false)}
       />
