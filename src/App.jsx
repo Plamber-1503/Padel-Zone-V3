@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import AppLayout from '@/components/layout/AppLayout';
@@ -15,8 +15,12 @@ import ClubDashboardPage from '@/pages/ClubDashboardPage';
 import BackofficePage from '@/pages/BackofficePage';
 import LoginPage from '@/pages/LoginPage';
 
+const POST_LOGIN_REDIRECT_KEY = 'pz3_post_login_redirect';
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
@@ -27,7 +31,26 @@ function ProtectedRoute({ children }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user) {
+    // Guardamos a dónde quería ir para volver ahí después del login (el
+    // login con Google navega afuera del sitio y vuelve siempre a la raíz,
+    // así que sin esto cualquier link directo a una página protegida se
+    // perdía y terminabas en el feed principal en vez de tu destino real.
+    try { sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, location.pathname); } catch { /* noop */ }
+    return <Navigate to="/login" replace />;
+  }
+
+  let pendingRedirect = null;
+  try {
+    pendingRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+    if (pendingRedirect) sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+  } catch { /* noop */ }
+
+  if (pendingRedirect && pendingRedirect !== location.pathname) {
+    return <Navigate to={pendingRedirect} replace />;
+  }
+
   return children;
 }
 
