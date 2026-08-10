@@ -15,67 +15,11 @@ export function AuthProvider({ children }) {
     async function initAuth() {
       try {
         if (isSupabaseConfigured && supabase) {
-          // 1. Capturar tokens o errores devueltos por Google OAuth en la URL (hash o query params)
-          const rawHash = window.location.hash || '';
-          const rawSearch = window.location.search || '';
-
-          let accessToken = null;
-          let refreshToken = null;
-          let code = null;
-          let errorDesc = null;
-
-          if (rawHash.includes('access_token=')) {
-            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('access_token=')));
-            accessToken = hashParams.get('access_token');
-            refreshToken = hashParams.get('refresh_token');
-          } else if (rawSearch.includes('access_token=')) {
-            const searchParams = new URLSearchParams(rawSearch);
-            accessToken = searchParams.get('access_token');
-            refreshToken = searchParams.get('refresh_token');
-          }
-
-          if (rawSearch.includes('code=')) {
-            const searchParams = new URLSearchParams(rawSearch);
-            code = searchParams.get('code');
-          } else if (rawHash.includes('code=')) {
-            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('code=')));
-            code = hashParams.get('code');
-          }
-
-          if (rawHash.includes('error=')) {
-            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('error=')));
-            errorDesc = hashParams.get('error_description') || hashParams.get('error');
-          } else if (rawSearch.includes('error=')) {
-            const searchParams = new URLSearchParams(rawSearch);
-            errorDesc = searchParams.get('error_description') || searchParams.get('error');
-          }
-
-          if (errorDesc) {
-            console.error('[PadelZone Auth] Error en redirección OAuth:', errorDesc);
-            sessionStorage.setItem('pz3_auth_error', decodeURIComponent(errorDesc));
-            window.history.replaceState(null, '', window.location.pathname + '#/login');
-          } else if (accessToken && refreshToken) {
-            console.log('[PadelZone Auth] Estableciendo sesión OAuth desde tokens...');
-            const { error: setSessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            if (setSessionErr) {
-              console.error('[PadelZone Auth] Error en setSession:', setSessionErr.message);
-              sessionStorage.setItem('pz3_auth_error', setSessionErr.message);
-            }
-            window.history.replaceState(null, '', window.location.pathname + '#/');
-          } else if (code) {
-            console.log('[PadelZone Auth] Intercambiando código OAuth por sesión...');
-            const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-            if (exchangeErr) {
-              console.error('[PadelZone Auth] Error en exchangeCodeForSession:', exchangeErr.message);
-              sessionStorage.setItem('pz3_auth_error', exchangeErr.message);
-            }
-            window.history.replaceState(null, '', window.location.pathname + '#/');
-          }
-
-          // 2. Leer la sesión activa autenticada
+          // El token/código/error de OAuth ya se procesa de forma síncrona en
+          // main.jsx, antes de que HashRouter monte — acá solo leemos la
+          // sesión resultante (setSession/exchangeCodeForSession de main.jsx
+          // ya debería haber corrido, o estar corriendo; getSession() espera
+          // la inicialización interna del cliente antes de resolver).
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
 

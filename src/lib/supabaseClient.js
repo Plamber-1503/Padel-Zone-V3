@@ -23,16 +23,18 @@ if (!isSupabaseConfigured) {
 // silencioso (vuelve con ?code=... pero el intercambio por sesión falla sin
 // avisar). 'implicit' evita ese paso intermedio: el token vuelve directo en
 // la URL de redirección, sin nada que conservar entre medio — por eso el
-// código de AuthContext.jsx ya sabía interceptar '#access_token=' antes de
-// que HashRouter reescriba la URL.
-// Configuración de Supabase Client con manejo de Auth optimizado para HashRouter
+// código en main.jsx ya sabe interceptar '#access_token=' antes de que
+// HashRouter reescriba la URL (ver comentario ahí para el detalle completo).
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'implicit',
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: false // AuthContext maneja de forma explícita y asíncrona (await) los tokens de redirección OAuth antes de que HashRouter sobrescriba la URL.
+        // false: main.jsx ya procesa el token/código de la URL de forma
+        // síncrona y explícita antes de que React monte — si esto quedara en
+        // true, el SDK intentaría procesar el mismo hash en paralelo.
+        detectSessionInUrl: false
       }
     })
   : null;
