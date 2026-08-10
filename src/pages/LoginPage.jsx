@@ -18,6 +18,14 @@ export default function LoginPage() {
   // efecto, la pantalla se quedaba mostrando el login aunque la sesión ya
   // hubiera quedado establecida un momento más tarde.
   useEffect(() => {
+    try {
+      const authErr = sessionStorage.getItem('pz3_auth_error');
+      if (authErr) {
+        sessionStorage.removeItem('pz3_auth_error');
+        setError(authErr);
+      }
+    } catch { /* noop */ }
+
     if (!user) return;
     let target = '/';
     try {

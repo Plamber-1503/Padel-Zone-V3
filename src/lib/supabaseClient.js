@@ -25,13 +25,14 @@ if (!isSupabaseConfigured) {
 // la URL de redirección, sin nada que conservar entre medio — por eso el
 // código de AuthContext.jsx ya sabía interceptar '#access_token=' antes de
 // que HashRouter reescriba la URL.
+// Configuración de Supabase Client con manejo de Auth optimizado para HashRouter
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'implicit',
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: false // AuthContext maneja de forma explícita y asíncrona (await) los tokens de redirección OAuth antes de que HashRouter sobrescriba la URL.
       }
     })
   : null;

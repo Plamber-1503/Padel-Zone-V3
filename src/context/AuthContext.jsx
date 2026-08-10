@@ -15,38 +15,96 @@ export function AuthProvider({ children }) {
     async function initAuth() {
       try {
         if (isSupabaseConfigured && supabase) {
-          // Auditoría 2026-08-09: había acá un segundo mecanismo manual que
-          // volvía a leer '#access_token=...' de la URL y llamaba a
-          // supabase.auth.setSession() a mano — duplicando lo que el cliente
-          // ya hace solo via detectSessionInUrl (activado en supabaseClient.js).
-          // Los dos procesando el mismo token en simultáneo terminaban
-          // corrompiendo el pedido (AuthRetryableFetchError: "String contains
-          // non ISO-8859-1 code point" al arma run request con datos ya
-          // parcialmente consumidos/reescritos). Sacamos el duplicado y
-          // dejamos que el SDK lo resuelva solo.
+          // 1. Capturar tokens o errores devueltos por Google OAuth en la URL (hash o query params)
+          const rawHash = window.location.hash || '';
+          const rawSearch = window.location.search || '';
+
+          let accessToken = null;
+          let refreshToken = null;
+          let code = null;
+          let errorDesc = null;
+
+          if (rawHash.includes('access_token=')) {
+            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('access_token=')));
+            accessToken = hashParams.get('access_token');
+            refreshToken = hashParams.get('refresh_token');
+          } else if (rawSearch.includes('access_token=')) {
+            const searchParams = new URLSearchParams(rawSearch);
+            accessToken = searchParams.get('access_token');
+            refreshToken = searchParams.get('refresh_token');
+          }
+
+          if (rawSearch.includes('code=')) {
+            const searchParams = new URLSearchParams(rawSearch);
+            code = searchParams.get('code');
+          } else if (rawHash.includes('code=')) {
+            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('code=')));
+            code = hashParams.get('code');
+          }
+
+          if (rawHash.includes('error=')) {
+            const hashParams = new URLSearchParams(rawHash.substring(rawHash.indexOf('error=')));
+            errorDesc = hashParams.get('error_description') || hashParams.get('error');
+          } else if (rawSearch.includes('error=')) {
+            const searchParams = new URLSearchParams(rawSearch);
+            errorDesc = searchParams.get('error_description') || searchParams.get('error');
+          }
+
+          if (errorDesc) {
+            console.error('[PadelZone Auth] Error en redirección OAuth:', errorDesc);
+            sessionStorage.setItem('pz3_auth_error', decodeURIComponent(errorDesc));
+            window.history.replaceState(null, '', window.location.pathname + '#/login');
+          } else if (accessToken && refreshToken) {
+            console.log('[PadelZone Auth] Estableciendo sesión OAuth desde tokens...');
+            const { error: setSessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            if (setSessionErr) {
+              console.error('[PadelZone Auth] Error en setSession:', setSessionErr.message);
+              sessionStorage.setItem('pz3_auth_error', setSessionErr.message);
+            }
+            window.history.replaceState(null, '', window.location.pathname + '#/');
+          } else if (code) {
+            console.log('[PadelZone Auth] Intercambiando código OAuth por sesión...');
+            const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+            if (exchangeErr) {
+              console.error('[PadelZone Auth] Error en exchangeCodeForSession:', exchangeErr.message);
+              sessionStorage.setItem('pz3_auth_error', exchangeErr.message);
+            }
+            window.history.replaceState(null, '', window.location.pathname + '#/');
+          }
+
+          // 2. Leer la sesión activa autenticada
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
 
           if (session?.user) {
-            const profile = await padelService.ensureProfile(session.user);
-            const currentUserObj = profile || session.user;
+            let currentUserObj = session.user;
+            try {
+              const profile = await padelService.ensureProfile(session.user);
+              if (profile) currentUserObj = profile;
+            } catch (err) {
+              console.warn('[PadelZone Auth] Error al asegurar perfil inicial:', err);
+            }
             setUser(currentUserObj);
             padelService.setCurrentUser(currentUserObj);
           } else {
-            // Auditoría 2026-08-09: acá antes se hacía setUser(padelService.getCurrentUser()),
-            // que devuelve un usuario de prueba cacheado en localStorage (o el mock por
-            // defecto) cuando NO hay sesión real de Supabase. Eso dejaba "entrar" a la app
-            // como un usuario de mentira sin haberse autenticado nunca — sin sesión real,
-            // no hay usuario, punto.
             setUser(null);
             localStorage.removeItem('pz3_current_user');
           }
 
-          // Escuchar cambios de sesión en vivo
+          // 3. Escuchar cambios de sesión en vivo
           const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (!isMounted) return;
             if (session?.user) {
-              const profile = await padelService.ensureProfile(session.user);
-              const currentUserObj = profile || session.user;
+              let currentUserObj = session.user;
+              try {
+                const profile = await padelService.ensureProfile(session.user);
+                if (profile) currentUserObj = profile;
+              } catch (err) {
+                console.warn('[PadelZone Auth] Error al asegurar perfil en evento:', err);
+              }
               setUser(currentUserObj);
               padelService.setCurrentUser(currentUserObj);
             } else if (event === 'SIGNED_OUT') {
