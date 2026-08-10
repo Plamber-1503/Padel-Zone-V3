@@ -391,8 +391,20 @@ CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
 --    contra el dueño de cada fila. Antes varias usaban USING (true) o permitían
 --    auth.uid() IS NULL, dejando lectura/escritura pública sin autenticación
 --    sobre mensajes, chats, reservas, posts y partidos abiertos.
+-- Auditoría 2026-08-09 (incidente): la app tuvo, por un tiempo, un botón que
+-- dejaba a cualquier usuario cambiarse su propio 'role' vía esta misma
+-- policy (ya que USING sin WITH CHECK no restringe qué valores se pueden
+-- escribir). El WITH CHECK de abajo bloquea a nivel de base de datos que un
+-- usuario común cambie su propio rol, incluso si el código de la app vuelve
+-- a tener un bug así. sync_club_owner_role (SECURITY DEFINER, más abajo) y
+-- el SQL Editor (rol postgres) no pasan por RLS y no se ven afectados.
 DROP POLICY IF EXISTS "Users Update Own Profile" ON public.profiles;
-CREATE POLICY "Users Update Own Profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users Update Own Profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (
+    auth.uid() = id
+    AND (role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid()) OR public.current_user_role() = 'admin')
+  );
 
 DROP POLICY IF EXISTS "Users Create Bookings" ON public.bookings;
 DROP POLICY IF EXISTS "Users Read Own Bookings" ON public.bookings;

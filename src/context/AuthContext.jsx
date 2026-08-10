@@ -145,14 +145,8 @@ export function AuthProvider({ children }) {
     return updated;
   };
 
-  const updateUserRole = async (newRole) => {
-    const updated = await padelService.updateUserRole(newRole);
-    setUser(updated);
-    return updated;
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, toggleFollow, updateUserRole }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, toggleFollow }}>
       {children}
     </AuthContext.Provider>
   );

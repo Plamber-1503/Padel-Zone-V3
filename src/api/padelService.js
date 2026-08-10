@@ -134,26 +134,13 @@ export const padelService = {
     return data || newProfile;
   },
 
-  async updateUserRole(newRole) {
-    const currentUser = await this.getCurrentAuthUser();
-    if (!currentUser?.id) throw new Error('Usuario no autenticado');
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', currentUser.id)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      console.warn('Error al actualizar rol en Supabase:', error.message);
-      throw new Error(`Error actualizando rol: ${error.message}`);
-    }
-
-    const updatedUser = data || { ...currentUser, role: newRole };
-    this.setCurrentUser(updatedUser);
-    return updatedUser;
-  },
+  // Nota (auditoría 2026-08-09, incidente de seguridad): existió acá un
+  // método updateUserRole(newRole) que dejaba que cualquier usuario logueado
+  // se auto-asignara el rol que quisiera (incluido 'admin'), sin ninguna
+  // aprobación. Se eliminó deliberadamente — el único camino válido para
+  // pasar a 'court_owner' es la aprobación de una solicitud de club por un
+  // moderador/admin (ver approveClub), y 'moderator'/'admin' solo se otorgan
+  // manualmente por un admin real desde la base de datos.
 
   async toggleFollow(targetId) {
     const current = this.getCurrentUser();

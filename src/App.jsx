@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -52,12 +52,18 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// Auditoría 2026-08-09 (incidente): una versión anterior de estas rutas
+// tenía un botón de "activar rol en 1 clic" que llamaba a
+// padelService.updateUserRole con el rol elegido por el propio usuario —
+// cualquier jugador logueado podía auto-asignarse 'court_owner' o directamente
+// 'admin' sin ninguna revisión, anulando por completo el flujo de aprobación
+// de clubes. Se eliminó esa función y el botón; el único camino para obtener
+// estos roles es la aprobación por un moderador/admin (clubes) o un cambio
+// manual hecho por un admin real en la base de datos.
 function ClubOwnerRoute({ children }) {
-  const { user, loading, updateUserRole } = useAuth();
-  const [upgrading, setUpgrading] = useState(false);
-
+  const { user, loading } = useAuth();
   if (loading) return null;
-  const isClubOwner = user?.role === 'court_owner' || user?.role === 'moderator' || user?.role === 'admin';
+  const isClubOwner = user?.role === 'court_owner' || user?.role === 'admin';
 
   if (!isClubOwner) {
     return (
@@ -68,25 +74,10 @@ function ClubOwnerRoute({ children }) {
           </div>
           <h2 className="text-lg font-bold text-white">Panel de Dueño de Club</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>.<br />
-            Para gestionar tus canchas y reservas, activá tu rol de Dueño de Club en 1 clic.
+            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>, pero
+            esta cuenta todavía no tiene acceso de dueño de club. Si sos dueño de un club, solicitalo desde
+            "Socio Club" en el menú principal.
           </p>
-          <button
-            onClick={async () => {
-              setUpgrading(true);
-              try {
-                await updateUserRole('court_owner');
-              } catch (e) {
-                alert(`Error al activar rol: ${e.message}`);
-              } finally {
-                setUpgrading(false);
-              }
-            }}
-            disabled={upgrading}
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {upgrading ? 'Activando rol...' : 'Activar Rol de Dueño de Club'}
-          </button>
         </div>
       </div>
     );
@@ -96,11 +87,9 @@ function ClubOwnerRoute({ children }) {
 }
 
 function StaffRoute({ children }) {
-  const { user, loading, updateUserRole } = useAuth();
-  const [upgrading, setUpgrading] = useState(false);
-
+  const { user, loading } = useAuth();
   if (loading) return null;
-  const isStaff = user?.role === 'court_owner' || user?.role === 'moderator' || user?.role === 'admin';
+  const isStaff = user?.role === 'moderator' || user?.role === 'admin';
 
   if (!isStaff) {
     return (
@@ -111,25 +100,9 @@ function StaffRoute({ children }) {
           </div>
           <h2 className="text-lg font-bold text-white">Panel de Administración de PadelZone</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>.<br />
-            Para acceder al panel de gestión de clubes y usuarios, activá tus credenciales de Dueño / Moderador.
+            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>, pero
+            esta cuenta no tiene permisos de moderador ni administrador.
           </p>
-          <button
-            onClick={async () => {
-              setUpgrading(true);
-              try {
-                await updateUserRole('court_owner');
-              } catch (e) {
-                alert(`Error al activar credenciales: ${e.message}`);
-              } finally {
-                setUpgrading(false);
-              }
-            }}
-            disabled={upgrading}
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {upgrading ? 'Activando credenciales...' : 'Acceder al Panel como Dueño / Moderador'}
-          </button>
         </div>
       </div>
     );
@@ -165,14 +138,10 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Rutas directas de panel de gestión de dueño y administración */}
+          {/* Panel privado — sin link visible en el sitio, se accede tipeando la URL */}
           <Route
             path="/panel-padelzone"
             element={<ProtectedRoute><StaffRoute><BackofficePage /></StaffRoute></ProtectedRoute>}
-          />
-          <Route
-            path="/panel-dueno"
-            element={<ProtectedRoute><ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute></ProtectedRoute>}
           />
 
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
