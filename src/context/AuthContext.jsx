@@ -15,26 +15,15 @@ export function AuthProvider({ children }) {
     async function initAuth() {
       try {
         if (isSupabaseConfigured && supabase) {
-          // Intercepción previa de #access_token=... antes de que HashRouter sobrescriba la URL
-          const rawHash = window.location.hash || '';
-          if (rawHash.includes('access_token=')) {
-            const hashString = rawHash.substring(rawHash.indexOf('access_token='));
-            const hashParams = new URLSearchParams(hashString);
-            const accessToken = hashParams.get('access_token');
-            const refreshToken = hashParams.get('refresh_token');
-
-            if (accessToken && refreshToken) {
-              const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-              });
-
-              if (!sessionErr && sessionData?.session) {
-                window.history.replaceState(null, '', window.location.pathname + '#/');
-              }
-            }
-          }
-
+          // Auditoría 2026-08-09: había acá un segundo mecanismo manual que
+          // volvía a leer '#access_token=...' de la URL y llamaba a
+          // supabase.auth.setSession() a mano — duplicando lo que el cliente
+          // ya hace solo via detectSessionInUrl (activado en supabaseClient.js).
+          // Los dos procesando el mismo token en simultáneo terminaban
+          // corrompiendo el pedido (AuthRetryableFetchError: "String contains
+          // non ISO-8859-1 code point" al arma run request con datos ya
+          // parcialmente consumidos/reescritos). Sacamos el duplicado y
+          // dejamos que el SDK lo resuelva solo.
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
 
