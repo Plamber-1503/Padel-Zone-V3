@@ -405,8 +405,11 @@ export default function AppLayout() {
             </div>
             {upcomingBooking ? (
               <>
-                <h4 className="font-bold text-sm text-white">{upcomingBooking.court_name}</h4>
-                <p className="text-xs text-slate-300 mt-0.5">{upcomingBooking.date} • {upcomingBooking.time}</p>
+                <h4 className="font-bold text-sm text-white">{upcomingBooking.court_name || 'Cancha reservada'}</h4>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {upcomingBooking.date} • {upcomingBooking.start_time?.slice(0, 5)}
+                  {upcomingBooking.end_time ? ` - ${upcomingBooking.end_time.slice(0, 5)}` : ''}
+                </p>
                 <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
                   <span className="text-slate-400 font-medium">${upcomingBooking.price?.toLocaleString()}</span>
                   <Link to={`/court/${upcomingBooking.court_id}`} className="text-emerald-400 font-semibold flex items-center gap-1 hover:underline">

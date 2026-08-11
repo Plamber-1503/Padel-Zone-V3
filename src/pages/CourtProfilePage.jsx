@@ -1,11 +1,36 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { padelService, useCourt, useCourts, usePosts, useBookings } from '@/api/padelService';
+import { useCourt, useCourts, usePosts, useBookings, useCreateBooking } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
 import CourtBusinessDashboardModal from '@/components/social/CourtBusinessDashboardModal';
+import RecurringBookingModal from '@/components/social/RecurringBookingModal';
 import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap, BarChart3 } from 'lucide-react';
+
+// `start`/`end` son la hora real (formato "HH:MM", válido para la columna
+// TIME de Postgres); `label` es solo el texto que se muestra en el botón.
+const BOOKING_SLOTS = [
+  { start: '17:00', end: '18:30', label: '17:00 - 18:30' },
+  { start: '18:30', end: '20:00', label: '18:30 - 20:00' },
+  { start: '20:00', end: '21:30', label: '20:00 - 21:30' },
+  { start: '21:30', end: '23:00', label: '21:30 - 23:00' }
+];
+
+const WEEKDAY_LABELS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+// Próximos 7 días (hoy incluido) para elegir en qué fecha reservar.
+function getNextDays(count = 7) {
+  const days = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const value = d.toISOString().split('T')[0];
+    const label = i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : `${WEEKDAY_LABELS[d.getDay()]} ${d.getDate()}`;
+    days.push({ value, label });
+  }
+  return days;
+}
 
 export default function CourtProfilePage() {
   const { id } = useParams();
@@ -23,15 +48,35 @@ export default function CourtProfilePage() {
   const { data: allPosts = [], refetch: reloadPosts } = usePosts('all');
   const courtPosts = allPosts.filter(p => p.court_id === court.id);
 
-  const today = new Date().toISOString().split('T')[0];
-  const { data: courtBookings = [], refetch: refetchBookings } = useBookings(court.id, today);
-  const takenSlots = courtBookings.map(b => b.start_time || b.time);
+  const [bookingDays] = useState(() => getNextDays(7));
+  const [selectedDate, setSelectedDate] = useState(bookingDays[0].value);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringSlot, setRecurringSlot] = useState(null);
+  const { data: courtBookings = [] } = useBookings(court.id, selectedDate);
+  const createBooking = useCreateBooking();
+  // El horario real guardado en la base (columna TIME) viene como "17:00:00" —
+  // comparamos solo "HH:MM" contra el horario de inicio de cada turno.
+  const takenSlots = courtBookings.map(b => (b.start_time || '').slice(0, 5));
 
-  const handleBookSlot = async (time) => {
+  const handleSlotClick = (slot) => {
+    // Con "reserva recurrente" tildado, no se reserva directo — se abre el
+    // modal que revisa disponibilidad de las ~4 fechas del mes antes de nada.
+    if (isRecurring) {
+      setRecurringSlot(slot);
+      return;
+    }
+    handleBookSlot(slot);
+  };
+
+  const handleBookSlot = async (slot) => {
     try {
-      await padelService.createBooking({ courtId: court.id, date: today, time });
+      // Auditoría 2026-08-10: antes se mandaba el texto completo del turno
+      // ("17:00 - 18:30") como start_time, y Postgres lo rechazaba siempre
+      // (columna TIME) — nadie podía reservar una cancha de verdad. Ahora se
+      // manda por separado la hora de inicio/fin real, y el texto es solo
+      // para mostrar en pantalla.
+      await createBooking.mutateAsync({ courtId: court.id, date: selectedDate, startTime: slot.start, endTime: slot.end });
       alert('¡Reserva confirmada con éxito!');
-      refetchBookings();
     } catch (e) {
       alert(e.message);
     }
@@ -187,26 +232,50 @@ export default function CourtProfilePage() {
               <h3 className="font-bold text-lg text-white">Turnos Disponibles — {court.name}</h3>
               <p className="text-xs text-slate-400">Superficie: {court.surface} • ${court.price_per_hour?.toLocaleString()} / hora</p>
             </div>
-            <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-3 py-1 rounded-full border border-emerald-500/30">
-              Hoy
-            </span>
           </div>
 
+          {/* Selector de día — próximos 7 días */}
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {bookingDays.map((day) => (
+              <button
+                key={day.value}
+                onClick={() => setSelectedDate(day.value)}
+                className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  selectedDate === day.value
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
+                }`}
+              >
+                {day.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2.5 bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-3 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={(e) => setIsRecurring(e.target.checked)}
+              className="w-4 h-4 accent-emerald-500 cursor-pointer"
+            />
+            <span className="text-xs font-bold text-slate-200">Reserva recurrente (30 días) — mismo día y horario cada semana</span>
+          </label>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            {['17:00 - 18:30', '18:30 - 20:00', '20:00 - 21:30', '21:30 - 23:00'].map((time) => {
-              const isTaken = takenSlots.includes(time);
+            {BOOKING_SLOTS.map((slot) => {
+              const isTaken = takenSlots.includes(slot.start);
               return (
                 <button
-                  key={time}
+                  key={slot.start}
                   disabled={isTaken}
-                  onClick={() => handleBookSlot(time)}
+                  onClick={() => handleSlotClick(slot)}
                   className={`p-4 rounded-2xl border transition-all ${
                     isTaken
                       ? 'bg-slate-800/40 border-slate-800 opacity-50 cursor-not-allowed'
                       : 'bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 border-slate-700 hover:border-emerald-400 cursor-pointer shadow-md'
                   }`}
                 >
-                  <p className="font-bold text-sm">{time}</p>
+                  <p className="font-bold text-sm">{slot.label}</p>
                   <p className="text-[11px] mt-1">{isTaken ? 'Ocupado' : 'Disponible'}</p>
                 </button>
               );
@@ -252,6 +321,18 @@ export default function CourtProfilePage() {
         onClose={() => setIsDashboardOpen(false)}
         court={court}
       />
+
+      {/* Modal de Reserva Recurrente — montado solo mientras está abierto */}
+      {recurringSlot && (
+        <RecurringBookingModal
+          court={court}
+          anchorDate={selectedDate}
+          initialSlot={recurringSlot}
+          today={bookingDays[0].value}
+          slots={BOOKING_SLOTS}
+          onClose={() => setRecurringSlot(null)}
+        />
+      )}
     </div>
   );
 }

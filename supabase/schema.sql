@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   CONSTRAINT unique_court_booking UNIQUE (court_id, date, start_time)
 );
 
+-- Reservas recurrentes 2026-08-10: agrupa las filas creadas por una misma
+-- solicitud "repetir todos los [día] por 30 días" — cada fecha sigue siendo
+-- una fila normal de bookings (mismo UNIQUE court+date+start_time de
+-- siempre), esto solo permite identificar cuáles pertenecen a la misma serie.
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS recurrence_id UUID;
+
 -- --------------------------------------------------------------------
 -- 6. TABLA DE PUBLICACIONES SOCIALES (posts)
 -- --------------------------------------------------------------------

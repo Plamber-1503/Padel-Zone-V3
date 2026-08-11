@@ -430,22 +430,43 @@ export const padelService = {
     return data;
   },
 
-  async getUpcomingBookingForCurrentUser() {
-    const currentUser = this.getCurrentUser();
+  // Para "reserva recurrente": todas las reservas del court en una ventana
+  // de fechas, en una sola consulta (en vez de una por cada ocurrencia).
+  async getCourtBookingsInRange(courtId, fromDate, toDate) {
     const { data, error } = await supabase
       .from('bookings')
-      .select('*')
+      .select('date, start_time')
+      .eq('court_id', courtId)
+      .gte('date', fromDate)
+      .lte('date', toDate);
+    if (error || !data) return [];
+    return data;
+  },
+
+  async getUpcomingBookingForCurrentUser() {
+    const currentUser = this.getCurrentUser();
+    // Se trae el nombre de la cancha vía join — la tabla bookings solo
+    // guarda court_id, no lo tenía denormalizado.
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*, courts(name)')
       .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false })
+      .order('date', { ascending: false })
+      .order('start_time', { ascending: false })
       .limit(1);
 
     if (error || !data || data.length === 0) return null;
-    return data[0];
+    const row = data[0];
+    return { ...row, court_name: row.courts?.name };
   },
 
-  async createBooking({ courtId, date, time, startTime }) {
+  async createBooking({ courtId, date, time, startTime, endTime }) {
     const currentUser = this.getCurrentUser();
     const court = await this.getCourtById(courtId);
+    // Auditoría 2026-08-10: `time`/el fallback fijo quedan solo como red de
+    // seguridad — el llamador (CourtProfilePage) ahora siempre manda
+    // startTime/endTime en formato "HH:MM" real, no un texto tipo
+    // "20:00 - 21:30" (eso rechazaba siempre el insert: start_time es TIME).
     const slotTime = startTime || time || '20:00';
 
     // ── REQUISITO #4: INSERCIÓN DIRECTA EN SUPABASE POSTGRESQL ──────────
@@ -459,6 +480,7 @@ export const padelService = {
         user_id: currentUser.id,
         date: date,
         start_time: slotTime,
+        end_time: endTime || null,
         price: court?.price_per_hour || 4500,
         status: 'confirmed'
       })
@@ -471,6 +493,43 @@ export const padelService = {
         throw new Error('RESTRICCIÓN BD (23505): Esta cancha ya tiene un turno reservado para esa fecha y hora.');
       }
       throw new Error(`Error de base de datos (${error.code || 'DB_ERR'}): ${error.message}`);
+    }
+
+    return data;
+  },
+
+  // Reserva recurrente: crea una fila por cada fecha ya validada como libre
+  // (la disponibilidad se chequea antes, en el modal, con
+  // src/lib/recurringAvailability.js) y las agrupa con un recurrence_id
+  // compartido. Si alguna choca igual (alguien reservó en el ratito entre
+  // que se mostró la disponibilidad y se confirmó), se informan cuáles
+  // fallaron en vez de perder toda la serie.
+  async createRecurringBooking({ courtId, dates, startTime, endTime }) {
+    const currentUser = this.getCurrentUser();
+    const court = await this.getCourtById(courtId);
+    const recurrenceId = crypto.randomUUID();
+
+    const rows = dates.map((date) => ({
+      court_id: courtId,
+      user_id: currentUser.id,
+      date,
+      start_time: startTime,
+      end_time: endTime || null,
+      price: court?.price_per_hour || 4500,
+      status: 'confirmed',
+      recurrence_id: recurrenceId
+    }));
+
+    const { data, error } = await supabase.from('bookings').insert(rows).select();
+
+    if (error) {
+      // Si el error es por choque de horario, puede ser que solo algunas
+      // filas del lote fallaran — Postgres/PostgREST no distingue cuál
+      // dentro de un insert múltiple, así que se informa la serie completa.
+      if (error.code === '23505') {
+        throw new Error('Una o más fechas de esta serie ya se ocuparon justo ahora. Volvé a intentar.');
+      }
+      throw new Error(`Error al crear la reserva recurrente: ${error.message}`);
     }
 
     return data;
@@ -817,6 +876,14 @@ export function useBookings(courtId, date) {
   });
 }
 
+export function useCourtBookingsInRange(courtId, fromDate, toDate) {
+  return useQuery({
+    queryKey: ['bookings_range', courtId, fromDate, toDate],
+    queryFn: () => padelService.getCourtBookingsInRange(courtId, fromDate, toDate),
+    enabled: Boolean(courtId && fromDate && toDate)
+  });
+}
+
 export function useChatMessages(otherUserId) {
   return useQuery({
     queryKey: ['chatMessages', otherUserId],
@@ -838,6 +905,22 @@ export function useCreateBooking() {
     mutationFn: (data) => padelService.createBooking(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings_range'] });
+      // Antes no se invalidaba esto — la tarjeta "Próxima Reserva" del
+      // sidebar quedaba desactualizada hasta el próximo refetch automático.
+      queryClient.invalidateQueries({ queryKey: ['upcoming_booking'] });
+    }
+  });
+}
+
+export function useCreateRecurringBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createRecurringBooking(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings_range'] });
+      queryClient.invalidateQueries({ queryKey: ['upcoming_booking'] });
     }
   });
 }
