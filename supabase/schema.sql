@@ -147,6 +147,130 @@ CREATE TABLE IF NOT EXISTS public.bookings (
 -- siempre), esto solo permite identificar cuáles pertenecen a la misma serie.
 ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS recurrence_id UUID;
 
+-- Gestión de reservas 2026-08-10: la pareja asociada al jugador que reservó
+-- (copiada de profiles.team_partner_id al momento de reservar) — así "Mis
+-- Reservas" y las notificaciones le llegan también a ella/él.
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS partner_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+-- Quién canceló/modificó por última vez, para el panel del club.
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS cancelled_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+-- Si esta fila nació de "Modificar reserva", apunta a la reserva que reemplazó.
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS replaces_booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL;
+
+-- Invitar hasta 2 jugadores más además de la pareja (2026-08-10): jugadores
+-- de la app se guardan como IDs; jugadores externos (sin cuenta) como
+-- nombre+teléfono en una tabla aparte, para invitarlos por WhatsApp.
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS guest_user_ids UUID[] NOT NULL DEFAULT '{}';
+
+CREATE TABLE IF NOT EXISTS public.booking_external_guests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.booking_external_guests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Booking Owner Manage External Guests" ON public.booking_external_guests;
+CREATE POLICY "Booking Owner Manage External Guests" ON public.booking_external_guests
+  FOR ALL USING (EXISTS (SELECT 1 FROM public.bookings b WHERE b.id = booking_id AND b.user_id = auth.uid()))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.bookings b WHERE b.id = booking_id AND b.user_id = auth.uid()));
+
+-- La restricción única original bloqueaba re-reservar un turno cancelado
+-- (el registro cancelado seguía "ocupando" el lugar). La cambiamos por un
+-- índice único PARCIAL: solo exige unicidad entre reservas NO canceladas,
+-- así el turno queda libre de verdad al cancelar, pero conservamos la fila
+-- vieja para el panel de cancelaciones del club.
+ALTER TABLE public.bookings DROP CONSTRAINT IF EXISTS unique_court_booking;
+DROP INDEX IF EXISTS unique_court_booking;
+CREATE UNIQUE INDEX IF NOT EXISTS unique_court_booking
+  ON public.bookings (court_id, date, start_time)
+  WHERE status <> 'cancelled';
+
+-- --------------------------------------------------------------------
+-- 5b. NOTIFICACIONES (bookings creadas/modificadas/canceladas, por ahora)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  type TEXT NOT NULL, -- 'booking_created' | 'booking_modified' | 'booking_cancelled'
+  title TEXT NOT NULL,
+  body TEXT,
+  booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users Read Own Notifications" ON public.notifications;
+CREATE POLICY "Users Read Own Notifications" ON public.notifications FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users Update Own Notifications" ON public.notifications;
+CREATE POLICY "Users Update Own Notifications" ON public.notifications
+  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Sin policy de INSERT pública a propósito: las notificaciones se crean solo
+-- vía la función de abajo (SECURITY DEFINER), que valida que solo puedas
+-- notificar a tu propia pareja (o a vos mismo) — así nadie puede mandarle
+-- notificaciones falsas a un tercero.
+-- 2026-08-10: además de la pareja, ahora se puede notificar a los hasta 2
+-- jugadores de la app invitados a una reserva puntual — se valida contra
+-- esa reserva específica (sos su dueño Y el destinatario es su pareja o
+-- está en su guest_user_ids), no solo contra tu pareja general.
+CREATE OR REPLACE FUNCTION public.create_booking_notification(
+  p_user_id UUID, p_type TEXT, p_title TEXT, p_body TEXT, p_booking_id UUID
+)
+RETURNS public.notifications
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor UUID := auth.uid();
+  v_partner UUID;
+  v_booking public.bookings;
+  v_allowed BOOLEAN := false;
+  v_row public.notifications;
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Debés iniciar sesión.';
+  END IF;
+
+  IF p_user_id = v_actor THEN
+    v_allowed := true;
+  END IF;
+
+  IF NOT v_allowed AND p_booking_id IS NOT NULL THEN
+    SELECT * INTO v_booking FROM public.bookings WHERE id = p_booking_id;
+    IF v_booking.user_id = v_actor
+       AND (p_user_id = v_booking.partner_id OR p_user_id = ANY(COALESCE(v_booking.guest_user_ids, '{}'))) THEN
+      v_allowed := true;
+    END IF;
+  END IF;
+
+  IF NOT v_allowed THEN
+    SELECT team_partner_id INTO v_partner FROM public.profiles WHERE id = v_actor;
+    IF p_user_id = v_partner THEN
+      v_allowed := true;
+    END IF;
+  END IF;
+
+  IF NOT v_allowed THEN
+    RAISE EXCEPTION 'No podés notificar a este usuario.';
+  END IF;
+
+  INSERT INTO public.notifications (user_id, actor_id, type, title, body, booking_id)
+  VALUES (p_user_id, v_actor, p_type, p_title, p_body, p_booking_id)
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_booking_notification(UUID, TEXT, TEXT, TEXT, UUID) TO authenticated;
+
 -- --------------------------------------------------------------------
 -- 6. TABLA DE PUBLICACIONES SOCIALES (posts)
 -- --------------------------------------------------------------------

@@ -13,6 +13,7 @@ import OpenMatchesPage from '@/pages/OpenMatchesPage';
 import TournamentsPage from '@/pages/TournamentsPage';
 import ChatPage from '@/pages/ChatPage';
 import ProfilePage from '@/pages/ProfilePage';
+import MyBookingsPage from '@/pages/MyBookingsPage';
 import ClubDashboardPage from '@/pages/ClubDashboardPage';
 import BackofficePage from '@/pages/BackofficePage';
 import LoginPage from '@/pages/LoginPage';
@@ -191,6 +192,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/profile/:id" element={<ProfilePage />} />
+            <Route path="/mis-reservas" element={<MyBookingsPage />} />
             <Route path="/club-dashboard" element={<ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute>} />
           </Route>
 

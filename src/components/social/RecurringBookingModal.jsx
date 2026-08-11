@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { X, Repeat, CalendarCheck, CalendarX, Sparkles, Loader2 } from 'lucide-react';
+import { X, Repeat, CalendarCheck, CalendarX, Sparkles, Loader2, MessageCircle } from 'lucide-react';
 import { useCourtBookingsInRange, useCreateBooking, useCreateRecurringBooking } from '@/api/padelService';
 import { addDays, analyzeRecurringOptions, findFreeSingleSlots, weekdayLabel } from '@/lib/recurringAvailability';
+import { useAuth } from '@/context/AuthContext';
+import GuestPicker from './GuestPicker';
 
 const WINDOW_DAYS = 30;
 
@@ -20,11 +22,13 @@ function formatDate(iso) {
 // un "isOpen" y dejarlo siempre montado) — así la consulta de disponibilidad
 // no corre de más en cada carga de la página de la cancha.
 export default function RecurringBookingModal({ onClose, court, anchorDate, initialSlot, today, slots }) {
+  const { user } = useAuth();
   const windowEnd = addDays(today, WINDOW_DAYS);
   const { data: bookings = [], isLoading } = useCourtBookingsInRange(court?.id, today, windowEnd);
   const createRecurring = useCreateRecurringBooking();
   const createSingle = useCreateBooking();
-  const [result, setResult] = useState(null); // { bookedCount, dates } tras confirmar
+  const [result, setResult] = useState(null); // { bookedCount, dates, externalGuestLinks } tras confirmar
+  const [guests, setGuests] = useState({ guestUserIds: [], externalGuests: [] });
 
   const options = useMemo(() => {
     if (isLoading) return [];
@@ -45,9 +49,16 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
         courtId: court.id,
         dates: option.freeDates,
         startTime: option.slot.start,
-        endTime: option.slot.end
+        endTime: option.slot.end,
+        guestUserIds: guests.guestUserIds,
+        externalGuests: guests.externalGuests
       });
-      setResult({ dates: option.freeDates, slot: option.slot, count: data?.length || option.freeDates.length });
+      setResult({
+        dates: option.freeDates,
+        slot: option.slot,
+        count: data?.bookings?.length || option.freeDates.length,
+        externalGuestLinks: data?.external_guest_links || []
+      });
     } catch (e) {
       alert(e.message);
     }
@@ -55,8 +66,15 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
 
   const confirmSingle = async (opt) => {
     try {
-      await createSingle.mutateAsync({ courtId: court.id, date: opt.date, startTime: opt.slot.start, endTime: opt.slot.end });
-      setResult({ dates: [opt.date], slot: opt.slot, count: 1, single: true });
+      const data = await createSingle.mutateAsync({
+        courtId: court.id,
+        date: opt.date,
+        startTime: opt.slot.start,
+        endTime: opt.slot.end,
+        guestUserIds: guests.guestUserIds,
+        externalGuests: guests.externalGuests
+      });
+      setResult({ dates: [opt.date], slot: opt.slot, count: 1, single: true, externalGuestLinks: data?.external_guest_links || [] });
     } catch (e) {
       alert(e.message);
     }
@@ -100,9 +118,34 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
                 {result.single ? '¡Turno reservado!' : `¡${result.count} turno(s) reservado(s)!`}
               </p>
               <p className="mt-1">{result.dates.map(formatDate).join(', ')} a las {result.slot.label}.</p>
-              <button onClick={onClose} className="mt-2 text-emerald-300 underline font-semibold">Cerrar</button>
             </div>
           </div>
+        )}
+
+        {!isLoading && result && result.externalGuestLinks?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Invitar por WhatsApp</p>
+            {result.externalGuestLinks.map((g) => (
+              <a
+                key={g.phone}
+                href={g.whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/40 rounded-xl px-3 py-2.5 text-xs text-emerald-200"
+              >
+                <span className="font-semibold">{g.name}</span>
+                <span className="flex items-center gap-1.5 font-bold text-[#25D366]"><MessageCircle className="w-3.5 h-3.5" /> Enviar</span>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && result && (
+          <button onClick={onClose} className="text-emerald-300 underline font-semibold text-xs">Cerrar</button>
+        )}
+
+        {!isLoading && !result && (
+          <GuestPicker currentUserId={user?.id} partnerName={user?.team_partner_name} onChange={setGuests} />
         )}
 
         {!isLoading && !result && original && (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { padelService, useCourts, useBookings } from '@/api/padelService';
+import { padelService, useCourts, useBookings, useCancelledBookingsForOwner } from '@/api/padelService';
 import {
   Building2,
   Plus,
@@ -16,13 +16,15 @@ import {
   AlertCircle,
   Calendar,
   X,
-  ChevronRight
+  ChevronRight,
+  CalendarX,
+  Repeat
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function ClubDashboardPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'metrics' | 'locks'
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'metrics' | 'locks' | 'cancellations'
   const { data: fetchedCourts = [] } = useCourts();
   const { data: allBookings = [] } = useBookings();
   const [courtsList, setCourtsList] = useState([]);
@@ -156,6 +158,18 @@ export default function ClubDashboardPage() {
             <Lock className="w-4 h-4" />
             <span>Bloqueo de Turnos</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('cancellations')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'cancellations'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <CalendarX className="w-4 h-4" />
+            <span>Cancelaciones</span>
+          </button>
         </div>
       </div>
 
@@ -272,6 +286,9 @@ export default function ClubDashboardPage() {
         </div>
       )}
 
+      {/* ── SOLAPA 4: CANCELACIONES Y MODIFICACIONES ─────────────────────── */}
+      {activeTab === 'cancellations' && <CancellationsTab />}
+
       {/* ── MODAL PARA AGREGAR NUEVA CANCHA ──────────────────────────────── */}
       {isAddCourtModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -338,6 +355,64 @@ export default function ClubDashboardPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// Cancelaciones y modificaciones de reservas de las canchas del club — para
+// ver qué tan seguido cancelan/modifican los jugadores y con quién.
+function CancellationsTab() {
+  const { data: rows = [], isLoading } = useCancelledBookingsForOwner();
+
+  if (isLoading) return <p className="text-xs text-slate-400">Cargando...</p>;
+  if (rows.length === 0) {
+    return (
+      <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+        Todavía no hay cancelaciones ni modificaciones registradas en tus canchas.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400 max-w-2xl">
+        Reservas canceladas o modificadas en tus canchas — usalo para ver qué jugadores cumplen sus turnos y cuáles
+        cancelan seguido, y pensar cómo mejorar esos índices.
+      </p>
+      <div className="bg-[#0b1322] border border-slate-800 rounded-2xl overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-800">
+              <th className="p-3">Cancha</th>
+              <th className="p-3">Turno original</th>
+              <th className="p-3">Reservado por</th>
+              <th className="p-3">Tipo</th>
+              <th className="p-3">Cancelado por</th>
+              <th className="p-3">Cuándo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => (
+              <tr key={b.id} className="border-b border-slate-800/60">
+                <td className="p-3 text-slate-200 font-semibold">{b.court_name}</td>
+                <td className="p-3 text-slate-400">{b.date} · {(b.start_time || '').slice(0, 5)}</td>
+                <td className="p-3 text-slate-400">{b.booker_name}</td>
+                <td className="p-3">
+                  {b.was_modification ? (
+                    <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 w-fit">
+                      <Repeat className="w-2.5 h-2.5" /> Modificada
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold uppercase">Cancelada</span>
+                  )}
+                </td>
+                <td className="p-3 text-slate-400">{b.cancelled_by_name || '—'}</td>
+                <td className="p-3 text-slate-500">{b.cancelled_at ? new Date(b.cancelled_at).toLocaleString('es-AR') : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

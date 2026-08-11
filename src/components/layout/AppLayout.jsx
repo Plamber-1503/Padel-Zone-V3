@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useUsers, useUpcomingBooking } from '@/api/padelService';
+import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useUsers, useUpcomingBooking, useMyNotifications, useMarkNotificationRead } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import ClubApplicationModal from '@/components/social/ClubApplicationModal';
@@ -26,7 +26,8 @@ import {
   ShieldCheck,
   Circle,
   Sun,
-  Moon
+  Moon,
+  CalendarClock
 } from 'lucide-react';
 
 export default function AppLayout() {
@@ -44,12 +45,28 @@ export default function AppLayout() {
   const { data: postsData = [] } = usePosts();
   const { data: tournamentsData = [] } = useTournaments();
   const { data: usersData = [] } = useUsers();
+  const { data: realNotifications = [] } = useMyNotifications();
+  const markNotificationRead = useMarkNotificationRead();
 
   const openMatches = openMatchesData.slice(0, 2);
 
-  // Notificaciones generadas a partir de datos reales: partidos abiertos con
-  // cupo disponible + comentarios recientes en publicaciones del usuario.
+  const unreadCount = realNotifications.filter((n) => !n.is_read).length;
+
+  const handleMarkAllRead = () => {
+    realNotifications.filter((n) => !n.is_read).forEach((n) => markNotificationRead.mutate(n.id));
+  };
+
+  // Notificaciones reales (reservas creadas/modificadas/canceladas por tu
+  // pareja) primero, después las generadas a partir de datos ya cargados:
+  // partidos abiertos con cupo disponible + comentarios recientes.
   const notifications = [
+    ...realNotifications.map((n) => ({
+      id: n.id,
+      icon: CalendarClock,
+      color: n.type === 'booking_cancelled' ? 'amber' : 'emerald',
+      title: n.title,
+      subtitle: n.body
+    })),
     ...openMatchesData
       .filter(m => (m.joined_players?.length || 0) < m.max_players)
       .slice(0, 1)
@@ -157,7 +174,9 @@ export default function AppLayout() {
                 className="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700/50 transition-all relative"
               >
                 <Bell className="w-4 h-4" />
-                <span className="w-2 h-2 rounded-full bg-emerald-400 absolute top-2.5 right-2.5 animate-pulse" />
+                {unreadCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 absolute top-2.5 right-2.5 animate-pulse" />
+                )}
               </button>
 
               {/* Notifications Popover */}
@@ -165,7 +184,11 @@ export default function AppLayout() {
                 <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 text-xs space-y-3 z-50">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <span className="font-bold text-sm text-white">Notificaciones</span>
-                    <span className="text-[10px] text-emerald-400 font-semibold cursor-pointer">Marcar leídas</span>
+                    {unreadCount > 0 && (
+                      <button onClick={handleMarkAllRead} className="text-[10px] text-emerald-400 font-semibold cursor-pointer">
+                        Marcar leídas
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-2">
                     {notifications.map(n => (

@@ -103,7 +103,7 @@ export default function CourtsPage() {
                   Ver Feed del Club
                 </Link>
                 <Link
-                  to={`/court/${court.id}`}
+                  to={`/court/${court.id}?tab=booking`}
                   className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2.5 rounded-xl text-center shadow transition-all hover:scale-105"
                 >
                   Reservar Turno

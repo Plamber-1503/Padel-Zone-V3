@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useCourt, useCourts, usePosts, useBookings, useCreateBooking } from '@/api/padelService';
+import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { useCourt, useCourts, usePosts, useBookings } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
 import CourtBusinessDashboardModal from '@/components/social/CourtBusinessDashboardModal';
 import RecurringBookingModal from '@/components/social/RecurringBookingModal';
-import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap, BarChart3 } from 'lucide-react';
+import BookingConfirmModal from '@/components/social/BookingConfirmModal';
+import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap, BarChart3, Pencil } from 'lucide-react';
 
 // `start`/`end` son la hora real (formato "HH:MM", válido para la columna
 // TIME de Postgres); `label` es solo el texto que se muestra en el botón.
@@ -34,12 +35,20 @@ function getNextDays(count = 7) {
 
 export default function CourtProfilePage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { user, toggleFollow } = useAuth();
   const { data: courtDetail } = useCourt(id);
   const { data: allCourts = [] } = useCourts();
   const court = courtDetail || allCourts.find(c => c.id === id) || allCourts[0] || { id, name: 'Cancha', rating: 4.8 };
-  
-  const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'booking' | 'tournaments' | 'reviews'
+
+  // Reserva en curso a modificar (llega desde "Mis Reservas" → Modificar).
+  const modifyBooking = location.state?.modifyBooking || null;
+
+  // Auditoría 2026-08-10: "Reservar Turno" desde el listado de canchas
+  // (CourtsPage) ahora manda ?tab=booking para no obligar a un segundo clic
+  // acá adentro. ?recurring=1 llega al reconstruir una serie modificada.
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'booking' || modifyBooking ? 'booking' : 'feed');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
@@ -50,10 +59,10 @@ export default function CourtProfilePage() {
 
   const [bookingDays] = useState(() => getNextDays(7));
   const [selectedDate, setSelectedDate] = useState(bookingDays[0].value);
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(searchParams.get('recurring') === '1');
   const [recurringSlot, setRecurringSlot] = useState(null);
+  const [pendingSlot, setPendingSlot] = useState(null); // turno esperando confirmación (simple o modificar)
   const { data: courtBookings = [] } = useBookings(court.id, selectedDate);
-  const createBooking = useCreateBooking();
   // El horario real guardado en la base (columna TIME) viene como "17:00:00" —
   // comparamos solo "HH:MM" contra el horario de inicio de cada turno.
   const takenSlots = courtBookings.map(b => (b.start_time || '').slice(0, 5));
@@ -61,25 +70,14 @@ export default function CourtProfilePage() {
   const handleSlotClick = (slot) => {
     // Con "reserva recurrente" tildado, no se reserva directo — se abre el
     // modal que revisa disponibilidad de las ~4 fechas del mes antes de nada.
-    if (isRecurring) {
+    if (isRecurring && !modifyBooking) {
       setRecurringSlot(slot);
       return;
     }
-    handleBookSlot(slot);
-  };
-
-  const handleBookSlot = async (slot) => {
-    try {
-      // Auditoría 2026-08-10: antes se mandaba el texto completo del turno
-      // ("17:00 - 18:30") como start_time, y Postgres lo rechazaba siempre
-      // (columna TIME) — nadie podía reservar una cancha de verdad. Ahora se
-      // manda por separado la hora de inicio/fin real, y el texto es solo
-      // para mostrar en pantalla.
-      await createBooking.mutateAsync({ courtId: court.id, date: selectedDate, startTime: slot.start, endTime: slot.end });
-      alert('¡Reserva confirmada con éxito!');
-    } catch (e) {
-      alert(e.message);
-    }
+    // Auditoría 2026-08-10: antes esto reservaba directo al hacer clic — ahora
+    // siempre se confirma primero en un popup (día, hora, y si es una
+    // modificación, el turno viejo que va a reemplazar).
+    setPendingSlot(slot);
   };
 
   return (
@@ -234,6 +232,15 @@ export default function CourtProfilePage() {
             </div>
           </div>
 
+          {modifyBooking && (
+            <div className="flex items-center gap-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200">
+              <Pencil className="w-4 h-4 shrink-0" />
+              <span>
+                Modificando tu turno del {modifyBooking.date} a las {(modifyBooking.start_time || '').slice(0, 5)} — elegí el nuevo día y horario.
+              </span>
+            </div>
+          )}
+
           {/* Selector de día — próximos 7 días */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {bookingDays.map((day) => (
@@ -251,15 +258,17 @@ export default function CourtProfilePage() {
             ))}
           </div>
 
-          <label className="flex items-center gap-2.5 bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-3 cursor-pointer w-fit">
-            <input
-              type="checkbox"
-              checked={isRecurring}
-              onChange={(e) => setIsRecurring(e.target.checked)}
-              className="w-4 h-4 accent-emerald-500 cursor-pointer"
-            />
-            <span className="text-xs font-bold text-slate-200">Reserva recurrente (30 días) — mismo día y horario cada semana</span>
-          </label>
+          {!modifyBooking && (
+            <label className="flex items-center gap-2.5 bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-3 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="w-4 h-4 accent-emerald-500 cursor-pointer"
+              />
+              <span className="text-xs font-bold text-slate-200">Reserva recurrente (30 días) — mismo día y horario cada semana</span>
+            </label>
+          )}
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             {BOOKING_SLOTS.map((slot) => {
@@ -331,6 +340,17 @@ export default function CourtProfilePage() {
           today={bookingDays[0].value}
           slots={BOOKING_SLOTS}
           onClose={() => setRecurringSlot(null)}
+        />
+      )}
+
+      {/* Popup de confirmación — reserva simple o modificación de un turno */}
+      {pendingSlot && (
+        <BookingConfirmModal
+          court={court}
+          date={selectedDate}
+          slot={pendingSlot}
+          modifyBooking={modifyBooking}
+          onClose={() => setPendingSlot(null)}
         />
       )}
     </div>

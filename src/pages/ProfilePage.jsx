@@ -6,7 +6,7 @@ import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
-import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2, MessageCircle, XCircle } from 'lucide-react';
+import { User, Trophy, Users, ShieldCheck, Calendar, Flame, Zap, UserCheck, Clock, Edit2, Trash2, MessageCircle, XCircle, CalendarClock } from 'lucide-react';
 
 export default function ProfilePage() {
   return (
@@ -31,6 +31,10 @@ function ProfilePageContent() {
   const isOwnProfile = !id || id === authUser?.id;
   const user = isOwnProfile ? authUser : (usersData.find(u => u?.id === id) || authUser);
   const isFollowing = !isOwnProfile && authUser?.following_ids?.includes(user?.id);
+  // "Mis Reservas" siempre muestra TUS reservas (no las de la otra persona) —
+  // el botón aparece en tu propio perfil y en el de tu pareja de equipo, como
+  // acceso rápido desde los dos lugares.
+  const showMyBookingsButton = isOwnProfile || user?.id === authUser?.team_partner_id;
 
   const handleToggleFollow = () => {
     if (user?.id) toggleFollow(user.id);
@@ -89,7 +93,16 @@ function ProfilePageContent() {
           </div>
 
           {/* Botón Disponible para jugar (dueño) o Enviar mensaje (visitante) */}
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-2 flex-wrap justify-center">
+            {showMyBookingsButton && (
+              <Link
+                to="/mis-reservas"
+                className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <CalendarClock className="w-4 h-4 stroke-[2.5]" />
+                <span>Mis Reservas</span>
+              </Link>
+            )}
             {isOwnProfile ? (
               <button
                 onClick={() => setIsAvailabilityModalOpen(true)}

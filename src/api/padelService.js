@@ -4,6 +4,7 @@
 
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { buildWhatsAppInviteLink } from '@/lib/whatsappInvite';
 import {
   INITIAL_USERS,
   INITIAL_COURTS,
@@ -346,6 +347,25 @@ export const padelService = {
     };
   },
 
+  // Notificaciones reales (creadas por create_booking_notification en la
+  // base) — hoy solo eventos de reservas, pensado para sumar más tipos después.
+  async getMyNotifications() {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) return [];
+    return data || [];
+  },
+
+  async markNotificationRead(id) {
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    if (error) console.warn('Error al marcar notificación como leída:', error.message);
+  },
+
   // 3. COURTS (Canchas de Pádel)
   async getCourts() {
     const { data, error } = await supabase.from('courts').select('*, clubs(*)');
@@ -425,7 +445,11 @@ export const padelService = {
   },
 
   async getBookingsForCourt(courtId, date) {
-    const { data, error } = await supabase.from('bookings').select('*').eq('court_id', courtId).eq('date', date);
+    // Auditoría 2026-08-10: sin el filtro de status, un turno cancelado
+    // seguía mostrándose como "Ocupado" para siempre — cancelar no liberaba
+    // nada en la pantalla (el índice único de la base sí lo permite, ver
+    // schema.sql, pero acá también hay que dejar de contarlo como tomado).
+    const { data, error } = await supabase.from('bookings').select('*').eq('court_id', courtId).eq('date', date).eq('status', 'confirmed');
     if (error || !data) return [];
     return data;
   },
@@ -437,6 +461,7 @@ export const padelService = {
       .from('bookings')
       .select('date, start_time')
       .eq('court_id', courtId)
+      .eq('status', 'confirmed')
       .gte('date', fromDate)
       .lte('date', toDate);
     if (error || !data) return [];
@@ -460,7 +485,11 @@ export const padelService = {
     return { ...row, court_name: row.courts?.name };
   },
 
-  async createBooking({ courtId, date, time, startTime, endTime }) {
+  // `guestUserIds`: hasta 2 IDs de jugadores de la app invitados (además de
+  // la pareja). `externalGuests`: hasta 2 {name, phone} de jugadores sin
+  // cuenta — quedan registrados y se devuelve un link de WhatsApp por cada
+  // uno para invitarlos (ver src/lib/whatsappInvite.js).
+  async createBooking({ courtId, date, time, startTime, endTime, guestUserIds = [], externalGuests = [] }) {
     const currentUser = this.getCurrentUser();
     const court = await this.getCourtById(courtId);
     // Auditoría 2026-08-10: `time`/el fallback fijo quedan solo como red de
@@ -478,6 +507,8 @@ export const padelService = {
       .insert({
         court_id: courtId,
         user_id: currentUser.id,
+        partner_id: currentUser.team_partner_id || null,
+        guest_user_ids: guestUserIds,
         date: date,
         start_time: slotTime,
         end_time: endTime || null,
@@ -495,7 +526,12 @@ export const padelService = {
       throw new Error(`Error de base de datos (${error.code || 'DB_ERR'}): ${error.message}`);
     }
 
-    return data;
+    await this._notifyBookingParticipants(data, 'booking_created', `${currentUser.full_name} reservó una cancha`,
+      `${court?.name || 'Cancha'} el ${data.date} a las ${(data.start_time || '').slice(0, 5)}.`);
+
+    const externalGuestLinks = await this._registerExternalGuests(data, court, externalGuests);
+
+    return { ...data, external_guest_links: externalGuestLinks };
   },
 
   // Reserva recurrente: crea una fila por cada fecha ya validada como libre
@@ -503,15 +539,18 @@ export const padelService = {
   // src/lib/recurringAvailability.js) y las agrupa con un recurrence_id
   // compartido. Si alguna choca igual (alguien reservó en el ratito entre
   // que se mostró la disponibilidad y se confirmó), se informan cuáles
-  // fallaron en vez de perder toda la serie.
-  async createRecurringBooking({ courtId, dates, startTime, endTime }) {
+  // fallaron en vez de perder toda la serie. Los invitados (app y externos)
+  // se asocian solo a la primera fecha, no a cada ocurrencia repetida.
+  async createRecurringBooking({ courtId, dates, startTime, endTime, guestUserIds = [], externalGuests = [] }) {
     const currentUser = this.getCurrentUser();
     const court = await this.getCourtById(courtId);
     const recurrenceId = crypto.randomUUID();
 
-    const rows = dates.map((date) => ({
+    const rows = dates.map((date, i) => ({
       court_id: courtId,
       user_id: currentUser.id,
+      partner_id: currentUser.team_partner_id || null,
+      guest_user_ids: i === 0 ? guestUserIds : [],
       date,
       start_time: startTime,
       end_time: endTime || null,
@@ -532,7 +571,162 @@ export const padelService = {
       throw new Error(`Error al crear la reserva recurrente: ${error.message}`);
     }
 
+    let externalGuestLinks = [];
+    if (data?.[0]) {
+      await this._notifyBookingParticipants(data[0], 'booking_created', `${currentUser.full_name} reservó una serie de turnos`,
+        `${court?.name || 'Cancha'} — ${data.length} fechas, los ${data.map(d => d.date).join(', ')} a las ${(startTime || '').slice(0, 5)}.`);
+      externalGuestLinks = await this._registerExternalGuests(data[0], court, externalGuests);
+    }
+
+    return { bookings: data, external_guest_links: externalGuestLinks };
+  },
+
+  // Notifica a la pareja y a los invitados de la app (guest_user_ids) sobre
+  // un evento de reserva. No falla la operación principal si alguna
+  // notificación no se pudo mandar — solo se registra el aviso.
+  async _notifyBookingParticipants(booking, type, title, body) {
+    const targets = [booking?.partner_id, ...(booking?.guest_user_ids || [])].filter(Boolean);
+    for (const userId of targets) {
+      const { error } = await supabase.rpc('create_booking_notification', {
+        p_user_id: userId,
+        p_type: type,
+        p_title: title,
+        p_body: body,
+        p_booking_id: booking.id
+      });
+      if (error) console.warn('No se pudo notificar a un participante de la reserva:', error.message);
+    }
+  },
+
+  // Guarda hasta 2 jugadores externos (sin cuenta) asociados a la reserva y
+  // devuelve, por cada uno, el link de WhatsApp listo para invitarlo.
+  async _registerExternalGuests(booking, court, externalGuests) {
+    const list = (externalGuests || []).filter((g) => g?.name?.trim() && g?.phone?.trim()).slice(0, 2);
+    if (list.length === 0) return [];
+
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('booking_external_guests')
+      .insert(list.map((g) => ({ booking_id: booking.id, name: g.name.trim(), phone: g.phone.trim() })))
+      .select();
+    if (error) {
+      console.warn('No se pudieron registrar los jugadores externos:', error.message);
+      return [];
+    }
+
+    return (data || []).map((g) => ({
+      name: g.name,
+      phone: g.phone,
+      whatsappLink: buildWhatsAppInviteLink({
+        phone: g.phone,
+        organizerName: currentUser.full_name,
+        courtName: court?.name || 'la cancha',
+        date: booking.date
+      })
+    }));
+  },
+
+  // "Mis Reservas" — turnos activos donde el usuario es quien reservó o su
+  // pareja asociada (así le aparece a los dos, como pidió el dueño del producto).
+  async getMyBookings() {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*, courts(name)')
+      .or(`user_id.eq.${currentUser.id},partner_id.eq.${currentUser.id}`)
+      .eq('status', 'confirmed')
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true });
+    if (error) throw new Error(`Error al leer tus reservas: ${error.message}`);
+    return (data || []).map((b) => ({ ...b, court_name: b.courts?.name, is_mine: b.user_id === currentUser.id }));
+  },
+
+  // scope: 'single' cancela solo esa fila; 'series' cancela todas las de la
+  // misma recurrence_id (si la tiene).
+  async cancelBooking(booking, scope = 'single') {
+    const currentUser = this.getCurrentUser();
+    const targetIds = scope === 'series' && booking.recurrence_id
+      ? null // se resuelve por recurrence_id en el update de abajo
+      : [booking.id];
+
+    let query = supabase.from('bookings').update({
+      status: 'cancelled',
+      cancelled_by: currentUser.id,
+      cancelled_at: new Date().toISOString()
+    });
+    query = targetIds ? query.in('id', targetIds) : query.eq('recurrence_id', booking.recurrence_id);
+    query = query.eq('status', 'confirmed');
+
+    const { data, error } = await query.select();
+    if (error) throw new Error(`Error al cancelar: ${error.message}`);
+
+    await this._notifyBookingParticipants(booking, 'booking_cancelled', `${currentUser.full_name} canceló ${scope === 'series' ? 'una serie de' : 'una'} reserva`,
+      `${booking.court_name || 'Cancha'} — ${scope === 'series' ? `${data?.length || ''} turnos` : `${booking.date} a las ${(booking.start_time || '').slice(0, 5)}`}.`);
+
     return data;
+  },
+
+  // "Modificar reserva" = crear la nueva PRIMERO (si el turno nuevo no está
+  // libre, el jugador conserva la reserva vieja en vez de quedarse sin
+  // ninguna) y recién si eso funciona, cancelar la vieja.
+  async modifyBooking(oldBooking, { date, startTime, endTime }) {
+    const currentUser = this.getCurrentUser();
+    const newBooking = await this.createBooking({ courtId: oldBooking.court_id, date, startTime, endTime });
+
+    await supabase
+      .from('bookings')
+      .update({ status: 'cancelled', cancelled_by: currentUser.id, cancelled_at: new Date().toISOString(), replaces_booking_id: null })
+      .eq('id', oldBooking.id);
+    await supabase.from('bookings').update({ replaces_booking_id: oldBooking.id }).eq('id', newBooking.id);
+
+    await this._notifyBookingParticipants(oldBooking, 'booking_modified', `${currentUser.full_name} modificó una reserva`,
+      `${oldBooking.court_name || 'Cancha'}: del ${oldBooking.date} ${(oldBooking.start_time || '').slice(0, 5)} pasó al ${date} ${startTime}.`);
+
+    return newBooking;
+  },
+
+  // Panel del club: reservas canceladas (incluye las "viejas" de una
+  // modificación) de las canchas que administra el dueño logueado.
+  async getCancelledBookingsForOwner() {
+    const currentUser = this.getCurrentUser();
+    const { data: myClubs } = await supabase.from('clubs').select('id').eq('owner_id', currentUser.id);
+    const clubIds = (myClubs || []).map((c) => c.id);
+    if (clubIds.length === 0) return [];
+
+    const { data: myCourts } = await supabase.from('courts').select('id, name').in('club_id', clubIds);
+    const courtIds = (myCourts || []).map((c) => c.id);
+    if (courtIds.length === 0) return [];
+
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .in('court_id', courtIds)
+      .eq('status', 'cancelled')
+      .order('cancelled_at', { ascending: false });
+    if (error) throw new Error(`Error al leer cancelaciones: ${error.message}`);
+
+    const courtNameById = Object.fromEntries((myCourts || []).map((c) => [c.id, c.name]));
+    const userIds = [...new Set((bookings || []).flatMap((b) => [b.user_id, b.cancelled_by].filter(Boolean)))];
+    let nameById = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles_public').select('id, full_name').in('id', userIds);
+      nameById = Object.fromEntries((profiles || []).map((p) => [p.id, p.full_name]));
+    }
+
+    const cancelledIds = (bookings || []).map((b) => b.id);
+    let modifiedIds = new Set();
+    if (cancelledIds.length > 0) {
+      const { data: replacements } = await supabase.from('bookings').select('replaces_booking_id').in('replaces_booking_id', cancelledIds);
+      modifiedIds = new Set((replacements || []).map((r) => r.replaces_booking_id));
+    }
+
+    return (bookings || []).map((b) => ({
+      ...b,
+      court_name: courtNameById[b.court_id] || '—',
+      booker_name: nameById[b.user_id] || 'Jugador',
+      cancelled_by_name: b.cancelled_by ? nameById[b.cancelled_by] || 'Jugador' : null,
+      was_modification: modifiedIds.has(b.id)
+    }));
   },
 
   // 6. POSTS SOCIALES
@@ -922,6 +1116,60 @@ export function useCreateRecurringBooking() {
       queryClient.invalidateQueries({ queryKey: ['bookings_range'] });
       queryClient.invalidateQueries({ queryKey: ['upcoming_booking'] });
     }
+  });
+}
+
+export function useMyBookings() {
+  return useQuery({
+    queryKey: ['my_bookings'],
+    queryFn: () => padelService.getMyBookings()
+  });
+}
+
+function invalidateBookingQueries(queryClient) {
+  queryClient.invalidateQueries({ queryKey: ['bookings'] });
+  queryClient.invalidateQueries({ queryKey: ['bookings_range'] });
+  queryClient.invalidateQueries({ queryKey: ['upcoming_booking'] });
+  queryClient.invalidateQueries({ queryKey: ['my_bookings'] });
+  queryClient.invalidateQueries({ queryKey: ['owner_cancelled_bookings'] });
+}
+
+export function useCancelBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ booking, scope }) => padelService.cancelBooking(booking, scope),
+    onSuccess: () => invalidateBookingQueries(queryClient)
+  });
+}
+
+export function useModifyBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ oldBooking, newSlot }) => padelService.modifyBooking(oldBooking, newSlot),
+    onSuccess: () => invalidateBookingQueries(queryClient)
+  });
+}
+
+export function useCancelledBookingsForOwner() {
+  return useQuery({
+    queryKey: ['owner_cancelled_bookings'],
+    queryFn: () => padelService.getCancelledBookingsForOwner()
+  });
+}
+
+export function useMyNotifications() {
+  return useQuery({
+    queryKey: ['my_notifications'],
+    queryFn: () => padelService.getMyNotifications(),
+    refetchInterval: 60000 // cada 1 min — no hay Realtime para esto todavía
+  });
+}
+
+export function useMarkNotificationRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => padelService.markNotificationRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my_notifications'] })
   });
 }
 
