@@ -279,10 +279,52 @@ export const padelService = {
 
   async getAllUsersAdmin() {
     // A diferencia de getUsers(), esto lee la tabla real (con email) — RLS
-    // solo se lo permite a role 'admin' | 'moderator'.
+    // solo se lo permite si tenés permiso 'users' o sos admin.
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (error) throw new Error(`Error al leer usuarios: ${error.message}`);
     return data || [];
+  },
+
+  // El propio usuario, logueado pero sin permisos, pide acceso al panel.
+  async requestStaffAccess() {
+    const currentUser = this.getCurrentUser();
+    if (!currentUser?.id) throw new Error('Usuario no autenticado');
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ staff_access_requested_at: new Date().toISOString() })
+      .eq('id', currentUser.id)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`Error al solicitar acceso: ${error.message}`);
+    this.setCurrentUser(data || { ...currentUser, staff_access_requested_at: new Date().toISOString() });
+    return data;
+  },
+
+  // Solo trae usuarios relevantes para "Gestión de accesos" (pidieron acceso
+  // o ya lo tienen) — no la base completa de jugadores registrados.
+  async getStaffAccessCandidates() {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .neq('role', 'admin')
+      .or('staff_access_requested_at.not.is.null,staff_permissions.neq.{}')
+      .order('staff_access_requested_at', { ascending: true, nullsFirst: false });
+    if (error) throw new Error(`Error al leer solicitudes de acceso: ${error.message}`);
+    return data || [];
+  },
+
+  // Gestión de accesos (solo admin — reforzado por RLS "Admin Manage Profiles").
+  // `permissions` es un array con cualquier combinación de:
+  // 'pending_clubs' | 'active_clubs' | 'users'
+  async updateStaffPermissions(userId, permissions) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ staff_permissions: permissions })
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`Error al actualizar permisos: ${error.message}`);
+    return data;
   },
 
   async getBusinessMetrics() {
@@ -946,5 +988,29 @@ export function useBusinessMetrics() {
   return useQuery({
     queryKey: ['admin_business_metrics'],
     queryFn: () => padelService.getBusinessMetrics()
+  });
+}
+
+export function useUpdateStaffPermissions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, permissions }) => padelService.updateStaffPermissions(userId, permissions),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_all_users'] });
+      queryClient.invalidateQueries({ queryKey: ['staff_access_candidates'] });
+    }
+  });
+}
+
+export function useStaffAccessCandidates() {
+  return useQuery({
+    queryKey: ['staff_access_candidates'],
+    queryFn: () => padelService.getStaffAccessCandidates()
+  });
+}
+
+export function useRequestStaffAccess() {
+  return useMutation({
+    mutationFn: () => padelService.requestStaffAccess()
   });
 }

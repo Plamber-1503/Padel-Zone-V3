@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { useRequestStaffAccess } from '@/api/padelService';
 import AppLayout from '@/components/layout/AppLayout';
-import { Building2, ShieldCheck } from 'lucide-react';
+import { Building2, ShieldCheck, Clock, Mail } from 'lucide-react';
 
 import HomeFeed from '@/pages/HomeFeed';
 import CourtsPage from '@/pages/CourtsPage';
@@ -89,26 +90,63 @@ function ClubOwnerRoute({ children }) {
 function StaffRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  const isStaff = user?.role === 'moderator' || user?.role === 'admin';
+  // Gestión de accesos 2026-08-10: acceso al panel si sos admin, o si un
+  // admin te otorgó al menos un permiso puntual (staff_permissions).
+  const isStaff = user?.role === 'admin' || (user?.staff_permissions?.length || 0) > 0;
 
   if (!isStaff) {
-    return (
-      <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h2 className="text-lg font-bold text-white">Panel de Administración de PadelZone</h2>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Estás conectado como <strong className="text-slate-200">{user?.full_name || user?.email}</strong>, pero
-            esta cuenta no tiene permisos de moderador ni administrador.
-          </p>
-        </div>
-      </div>
-    );
+    return <StaffAccessDenied user={user} />;
   }
 
   return children;
+}
+
+// Gestión de accesos 2026-08-10: en vez de que el admin tenga que buscar a
+// mano entre miles de usuarios, quien no tiene acceso puede solicitarlo acá
+// mismo — queda "pendiente" hasta que un admin lo revisa y le tilda qué
+// secciones del panel puede ver (pestaña "Gestión de accesos").
+function StaffAccessDenied({ user }) {
+  const requestAccess = useRequestStaffAccess();
+  const [justRequested, setJustRequested] = useState(false);
+  const alreadyRequested = justRequested || Boolean(user?.staff_access_requested_at);
+
+  return (
+    <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+          {alreadyRequested ? <Clock className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+        </div>
+        <h2 className="text-lg font-bold text-white">Panel de Administración de PadelZone</h2>
+
+        {alreadyRequested ? (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            No estás autorizado para ingresar al panel de PadelZone todavía. Tu solicitud con el correo{' '}
+            <strong className="text-slate-200">{user?.email}</strong> ya fue enviada — aguardá a que un
+            administrador te autorice.
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              No estás autorizado para ingresar al panel de PadelZone. Enviá una solicitud con tu correo{' '}
+              <strong className="text-slate-200">{user?.email}</strong> y aguardá a que un administrador te
+              autorice.
+            </p>
+            {requestAccess.isError && (
+              <p className="text-xs text-red-400">{requestAccess.error.message}</p>
+            )}
+            <button
+              onClick={() => requestAccess.mutate(undefined, { onSuccess: () => setJustRequested(true) })}
+              disabled={requestAccess.isPending}
+              className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Mail className="w-4 h-4" />
+              {requestAccess.isPending ? 'Enviando...' : 'Solicitar acceso'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ConfigMissingScreen() {

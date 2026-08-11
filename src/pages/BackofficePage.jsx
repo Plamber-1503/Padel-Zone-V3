@@ -6,24 +6,37 @@ import {
   useApproveClub,
   useRejectClub,
   useAllUsersAdmin,
-  useBusinessMetrics
+  useBusinessMetrics,
+  useUpdateStaffPermissions,
+  useStaffAccessCandidates
 } from '@/api/padelService';
-import { Building2, Users, BarChart3, ShieldCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Building2, Users, BarChart3, ShieldCheck, CheckCircle2, XCircle, Clock, KeyRound } from 'lucide-react';
+
+const PERMISSION_LABELS = {
+  pending_clubs: 'Clubes pendientes',
+  active_clubs: 'Clubes activos',
+  users: 'Usuarios'
+};
 
 // Panel privado de PadelZone — sin ningún link visible en el sitio, se accede
-// tipeando la URL directamente. Protegido por StaffRoute (src/App.jsx), que
-// exige role 'moderator' o 'admin' en la cuenta ya logueada.
+// tipeando la URL directamente. Protegido por StaffRoute (src/App.jsx).
+// Gestión de accesos 2026-08-10: reemplaza el viejo rol fijo "moderator" por
+// permisos por sección (staff_permissions), otorgables uno a uno desde acá.
 export default function BackofficePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState('pending');
+  const perms = user?.staff_permissions || [];
+  const has = (p) => isAdmin || perms.includes(p);
 
   const tabs = [
-    { id: 'pending', label: 'Clubes pendientes', icon: Clock },
-    { id: 'active', label: 'Clubes activos', icon: Building2 },
-    { id: 'users', label: 'Usuarios', icon: Users },
-    ...(isAdmin ? [{ id: 'metrics', label: 'Métricas del negocio', icon: BarChart3 }] : [])
-  ];
+    has('pending_clubs') && { id: 'pending', label: 'Clubes pendientes', icon: Clock },
+    has('active_clubs') && { id: 'active', label: 'Clubes activos', icon: Building2 },
+    has('users') && { id: 'users', label: 'Usuarios', icon: Users },
+    isAdmin && { id: 'metrics', label: 'Métricas del negocio', icon: BarChart3 },
+    isAdmin && { id: 'access', label: 'Gestión de accesos', icon: KeyRound }
+  ].filter(Boolean);
+
+  const [tab, setTab] = useState(tabs[0]?.id);
 
   return (
     <div className="min-h-screen bg-[#0a1128] text-slate-100 p-4 md:p-8">
@@ -34,7 +47,7 @@ export default function BackofficePage() {
           </div>
           <div>
             <h1 className="font-bold text-lg text-white">Panel privado de PadelZone</h1>
-            <p className="text-xs text-slate-400">Sesión de {user?.full_name} · rol {user?.role}</p>
+            <p className="text-xs text-slate-400">Sesión de {user?.full_name} · {isAdmin ? 'admin' : 'acceso: ' + (perms.map(p => PERMISSION_LABELS[p]).join(', ') || 'ninguno')}</p>
           </div>
         </div>
 
@@ -53,10 +66,11 @@ export default function BackofficePage() {
           ))}
         </div>
 
-        {tab === 'pending' && <PendingClubsTab />}
-        {tab === 'active' && <ActiveClubsTab />}
-        {tab === 'users' && <UsersTab />}
+        {tab === 'pending' && has('pending_clubs') && <PendingClubsTab />}
+        {tab === 'active' && has('active_clubs') && <ActiveClubsTab />}
+        {tab === 'users' && has('users') && <UsersTab />}
         {tab === 'metrics' && isAdmin && <MetricsTab />}
+        {tab === 'access' && isAdmin && <AccessManagementTab />}
       </div>
     </div>
   );
@@ -192,6 +206,82 @@ function MetricsTab() {
           <p className="text-xs text-slate-400 mt-1">{it.label}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AccessManagementTab() {
+  // Gestión de accesos 2026-08-10: solo trae a quienes pidieron acceso o ya
+  // lo tienen — no la base completa de usuarios registrados.
+  const { data: candidates = [], isLoading } = useStaffAccessCandidates();
+  const updatePerms = useUpdateStaffPermissions();
+  const permKeys = Object.keys(PERMISSION_LABELS);
+
+  if (isLoading) return <p className="text-xs text-slate-400">Cargando...</p>;
+
+  const toggle = (u, perm) => {
+    const current = u.staff_permissions || [];
+    const next = current.includes(perm) ? current.filter((p) => p !== perm) : [...current, perm];
+    updatePerms.mutate({ userId: u.id, permissions: next });
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400 max-w-2xl">
+        Acá aparece quien solicitó acceso al panel desde "Continuar con Google" → link privado, y quien ya tiene
+        algún permiso otorgado. Tildá qué secciones puede ver cada uno. Las métricas del negocio quedan exclusivas
+        de tu cuenta admin y no se pueden otorgar desde acá.
+      </p>
+
+      {candidates.length === 0 ? (
+        <p className="text-xs text-slate-400">Todavía nadie solicitó acceso.</p>
+      ) : (
+        <div className="bg-[#0b1322] border border-slate-800 rounded-2xl overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-800">
+                <th className="p-3">Usuario</th>
+                <th className="p-3">Estado</th>
+                {permKeys.map((p) => (
+                  <th key={p} className="p-3 text-center">{PERMISSION_LABELS[p]}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {candidates.map((u) => {
+                const current = u.staff_permissions || [];
+                const hasAnyAccess = current.length > 0;
+                return (
+                  <tr key={u.id} className="border-b border-slate-800/60">
+                    <td className="p-3">
+                      <p className="text-slate-200 font-semibold">{u.full_name}</p>
+                      <p className="text-slate-500 text-[11px]">{u.email}</p>
+                    </td>
+                    <td className="p-3">
+                      {hasAnyAccess ? (
+                        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold uppercase">Habilitado</span>
+                      ) : (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase">Pendiente</span>
+                      )}
+                    </td>
+                    {permKeys.map((p) => (
+                      <td key={p} className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={current.includes(p)}
+                          onChange={() => toggle(u, p)}
+                          disabled={updatePerms.isPending}
+                          className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

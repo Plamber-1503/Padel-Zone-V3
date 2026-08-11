@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'player', -- 'player' | 'court_owner' | 'moderator' | 'admin'
+  role TEXT NOT NULL DEFAULT 'player', -- 'player' | 'court_owner' | 'admin'
   level TEXT DEFAULT '4ta Categoría (Intermedio)',
   elo_rating INT DEFAULT 1200,
   bio TEXT DEFAULT '¡Apasionado del pádel!',
@@ -25,6 +25,19 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Gestión de accesos 2026-08-10: en vez de un único rol "moderator" fijo,
+-- un admin puede habilitarle a cualquier usuario acceso granular a secciones
+-- puntuales del panel privado, sin darle todo el panel. Valores válidos hoy:
+-- 'pending_clubs' (aprobar/rechazar solicitudes de club), 'active_clubs'
+-- (ver clubes activos), 'users' (ver el listado de usuarios registrados).
+-- Las métricas del negocio quedan exclusivas de role='admin', no son
+-- otorgables por acá — así se definió desde el principio.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS staff_permissions TEXT[] NOT NULL DEFAULT '{}';
+-- Marca de tiempo de "solicité acceso al panel" — permite que la pestaña de
+-- Gestión de Accesos muestre solo a quienes pidieron o ya tienen acceso, en
+-- vez de a los miles de jugadores registrados.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS staff_access_requested_at TIMESTAMPTZ;
 
 -- --------------------------------------------------------------------
 -- 2. TABLA SEPARADA DE CLUBES (clubs)
@@ -305,17 +318,40 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.current_user_role() TO authenticated, anon;
 
+-- Gestión de accesos 2026-08-10: true si el usuario autenticado es admin, o
+-- si tiene el permiso puntual `perm` en su staff_permissions. Reemplaza el
+-- viejo esquema "moderator ve todo o nada" por permisos por sección.
+CREATE OR REPLACE FUNCTION public.has_staff_permission(perm TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role = 'admin' OR perm = ANY(COALESCE(staff_permissions, '{}'))
+  FROM public.profiles WHERE id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.has_staff_permission(TEXT) TO authenticated, anon;
+
 -- Lectura pública y permisos para catálogos, feeds, partidos y perfiles
 -- ── Auditoría 2026-08-09: "Public Read Profiles" exponía el email de TODOS
 --    los usuarios a cualquier visitante sin sesión. Ahora solo tu propia fila
---    (o un moderador/admin) puede leer la tabla profiles completa; el resto de
---    la app usa la vista public.profiles_public (sin email) para listados.
+--    (o alguien con permiso 'users', o admin) puede leer la tabla profiles
+--    completa; el resto de la app usa la vista public.profiles_public
+--    (sin email) para listados.
 DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
 CREATE POLICY "Public Read Profiles" ON public.profiles
-  FOR SELECT USING (auth.uid() = id OR public.current_user_role() IN ('admin', 'moderator'));
+  FOR SELECT USING (auth.uid() = id OR public.has_staff_permission('users'));
 
 DROP POLICY IF EXISTS "Public Create Profiles" ON public.profiles;
 CREATE POLICY "Public Create Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
+
+-- Solo un admin puede editar el perfil de OTRO usuario (lo usa la pantalla
+-- de "Gestión de accesos" para otorgar/quitar staff_permissions). Es una
+-- policy independiente de "Users Update Own Profile" — no debilita esa.
+DROP POLICY IF EXISTS "Admin Manage Profiles" ON public.profiles;
+CREATE POLICY "Admin Manage Profiles" ON public.profiles
+  FOR UPDATE USING (public.current_user_role() = 'admin')
+  WITH CHECK (public.current_user_role() = 'admin');
 
 CREATE OR REPLACE VIEW public.profiles_public AS
 SELECT id, full_name, role, level, elo_rating, bio, avatar_url, matches_played,
@@ -325,13 +361,14 @@ FROM public.profiles;
 GRANT SELECT ON public.profiles_public TO authenticated, anon;
 
 -- Clubes: público solo ve los aprobados; el dueño ve su propia solicitud en
--- cualquier estado; moderador/admin ven todo (para poder revisar pendientes).
+-- cualquier estado; quien tenga el permiso 'pending_clubs' (o admin) ve
+-- también las pendientes/rechazadas, para poder revisarlas.
 DROP POLICY IF EXISTS "Public Read Clubs" ON public.clubs;
 CREATE POLICY "Public Read Clubs" ON public.clubs
   FOR SELECT USING (
     status = 'approved'
     OR owner_id = auth.uid()
-    OR public.current_user_role() IN ('admin', 'moderator')
+    OR public.has_staff_permission('pending_clubs')
   );
 
 DROP POLICY IF EXISTS "Users Request Club" ON public.clubs;
@@ -340,7 +377,7 @@ CREATE POLICY "Users Request Club" ON public.clubs
 
 DROP POLICY IF EXISTS "Staff Review Clubs" ON public.clubs;
 CREATE POLICY "Staff Review Clubs" ON public.clubs
-  FOR UPDATE USING (public.current_user_role() IN ('admin', 'moderator'));
+  FOR UPDATE USING (public.has_staff_permission('pending_clubs'));
 
 -- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
 -- (así el panel de socio que ya existe le funciona sin pasos manuales extra).
@@ -398,12 +435,16 @@ CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
 -- usuario común cambie su propio rol, incluso si el código de la app vuelve
 -- a tener un bug así. sync_club_owner_role (SECURITY DEFINER, más abajo) y
 -- el SQL Editor (rol postgres) no pasan por RLS y no se ven afectados.
+-- Gestión de accesos 2026-08-10: agregado staff_permissions a la misma
+-- protección que ya tenía 'role' — un usuario común no puede otorgarse a sí
+-- mismo acceso al panel privado tocando su propia fila.
 DROP POLICY IF EXISTS "Users Update Own Profile" ON public.profiles;
 CREATE POLICY "Users Update Own Profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id)
   WITH CHECK (
     auth.uid() = id
     AND (role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid()) OR public.current_user_role() = 'admin')
+    AND (staff_permissions = (SELECT p.staff_permissions FROM public.profiles p WHERE p.id = auth.uid()) OR public.current_user_role() = 'admin')
   );
 
 DROP POLICY IF EXISTS "Users Create Bookings" ON public.bookings;
