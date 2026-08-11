@@ -104,7 +104,7 @@ export default function BookingConfirmModal({ court, date, slot, modifyBooking, 
             {!isModify && (
               <GuestPicker
                 currentUserId={user?.id}
-                partnerName={user?.team_partner_name}
+                partnerId={user?.team_partner_id}
                 onChange={setGuests}
               />
             )}

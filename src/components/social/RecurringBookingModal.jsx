@@ -145,7 +145,7 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
         )}
 
         {!isLoading && !result && (
-          <GuestPicker currentUserId={user?.id} partnerName={user?.team_partner_name} onChange={setGuests} />
+          <GuestPicker currentUserId={user?.id} partnerId={user?.team_partner_id} onChange={setGuests} />
         )}
 
         {!isLoading && !result && original && (
