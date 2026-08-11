@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMyBookings, useCancelBooking } from '@/api/padelService';
-import { CalendarClock, MapPin, Repeat, User, XCircle, Pencil, Loader2 } from 'lucide-react';
+import { CalendarClock, MapPin, Repeat, User, XCircle, Pencil, Loader2, MessageCircle, X } from 'lucide-react';
 
 function formatDate(iso) {
   const d = new Date(`${iso}T00:00:00`);
@@ -33,6 +33,7 @@ export default function MyBookingsPage() {
   const cancelBooking = useCancelBooking();
   const navigate = useNavigate();
   const [cancellingGroup, setCancellingGroup] = useState(null); // group actualmente eligiendo alcance
+  const [cancelWaLinks, setCancelWaLinks] = useState(null); // invitados externos a avisar tras cancelar
 
   const groups = useMemo(() => groupBookings(bookings), [bookings]);
 
@@ -50,7 +51,12 @@ export default function MyBookingsPage() {
   };
 
   const handleCancel = (group, scope) => {
-    cancelBooking.mutate({ booking: group, scope }, { onSuccess: () => setCancellingGroup(null) });
+    cancelBooking.mutate({ booking: group, scope }, {
+      onSuccess: (result) => {
+        setCancellingGroup(null);
+        if (result?.external_guest_links?.length > 0) setCancelWaLinks(result.external_guest_links);
+      }
+    });
   };
 
   return (
@@ -64,6 +70,29 @@ export default function MyBookingsPage() {
           <p className="text-xs text-slate-400">Tus turnos activos, propios y los de tu pareja de equipo.</p>
         </div>
       </div>
+
+      {cancelWaLinks && (
+        <div className="bg-slate-900 border border-[#25D366]/30 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Avisar a los invitados externos</p>
+            <button onClick={() => setCancelWaLinks(null)} className="text-slate-500 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {cancelWaLinks.map((g) => (
+            <a
+              key={g.phone}
+              href={g.whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/40 rounded-xl px-3 py-2.5 text-xs text-emerald-200"
+            >
+              <span className="font-semibold">{g.name}</span>
+              <span className="flex items-center gap-1.5 font-bold text-[#25D366]"><MessageCircle className="w-3.5 h-3.5" /> Enviar</span>
+            </a>
+          ))}
+        </div>
+      )}
 
       {isLoading && (
         <p className="text-xs text-slate-400 flex items-center gap-2 py-6 justify-center">

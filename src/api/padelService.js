@@ -4,7 +4,7 @@
 
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { buildWhatsAppInviteLink } from '@/lib/whatsappInvite';
+import { buildWhatsAppInviteLink, buildWhatsAppCancelLink, buildWhatsAppModifyLink } from '@/lib/whatsappInvite';
 import {
   INITIAL_USERS,
   INITIAL_COURTS,
@@ -626,6 +626,19 @@ export const padelService = {
     }));
   },
 
+  // Invitados externos (sin cuenta) de una o más reservas — se usa para
+  // avisarles por WhatsApp cuando esa reserva se cancela o modifica, ya que
+  // no tienen forma de recibir la notificación dentro de la app.
+  async _getExternalGuestsForBookings(bookingIds) {
+    if (!bookingIds || bookingIds.length === 0) return [];
+    const { data, error } = await supabase.from('booking_external_guests').select('*').in('booking_id', bookingIds);
+    if (error) {
+      console.warn('No se pudieron leer los jugadores externos:', error.message);
+      return [];
+    }
+    return data || [];
+  },
+
   // "Mis Reservas" — turnos activos donde el usuario es quien reservó o su
   // pareja asociada (así le aparece a los dos, como pidió el dueño del producto).
   async getMyBookings() {
@@ -663,7 +676,18 @@ export const padelService = {
     await this._notifyBookingParticipants(booking, 'booking_cancelled', `${currentUser.full_name} canceló ${scope === 'series' ? 'una serie de' : 'una'} reserva`,
       `${booking.court_name || 'Cancha'} — ${scope === 'series' ? `${data?.length || ''} turnos` : `${booking.date} a las ${(booking.start_time || '').slice(0, 5)}`}.`);
 
-    return data;
+    const dateLabel = scope === 'series'
+      ? `varias fechas (serie cancelada)`
+      : `${booking.date} a las ${(booking.start_time || '').slice(0, 5)}`;
+    const cancelledIds = (data || []).map((b) => b.id);
+    const externalGuests = await this._getExternalGuestsForBookings(cancelledIds);
+    const externalGuestLinks = externalGuests.map((g) => ({
+      name: g.name,
+      phone: g.phone,
+      whatsappLink: buildWhatsAppCancelLink({ phone: g.phone, organizerName: currentUser.full_name, courtName: booking.court_name || 'la cancha', date: dateLabel })
+    }));
+
+    return { bookings: data, external_guest_links: externalGuestLinks };
   },
 
   // "Modificar reserva" = crear la nueva PRIMERO (si el turno nuevo no está
@@ -682,7 +706,29 @@ export const padelService = {
     await this._notifyBookingParticipants(oldBooking, 'booking_modified', `${currentUser.full_name} modificó una reserva`,
       `${oldBooking.court_name || 'Cancha'}: del ${oldBooking.date} ${(oldBooking.start_time || '').slice(0, 5)} pasó al ${date} ${startTime}.`);
 
-    return newBooking;
+    // Los invitados externos de la reserva vieja no se pierden: se copian a
+    // la reserva nueva (así una futura cancelación/modificación de ESTA
+    // también los encuentra) y se les manda el aviso de WhatsApp del cambio.
+    const externalGuests = await this._getExternalGuestsForBookings([oldBooking.id]);
+    let externalGuestLinks = [];
+    if (externalGuests.length > 0) {
+      await supabase.from('booking_external_guests').insert(
+        externalGuests.map((g) => ({ booking_id: newBooking.id, name: g.name, phone: g.phone }))
+      );
+      externalGuestLinks = externalGuests.map((g) => ({
+        name: g.name,
+        phone: g.phone,
+        whatsappLink: buildWhatsAppModifyLink({
+          phone: g.phone,
+          organizerName: currentUser.full_name,
+          courtName: oldBooking.court_name || 'la cancha',
+          oldDate: `${oldBooking.date} ${(oldBooking.start_time || '').slice(0, 5)}`,
+          newDate: `${date} ${startTime}`
+        })
+      }));
+    }
+
+    return { ...newBooking, external_guest_links: externalGuestLinks };
   },
 
   // Panel del club: reservas canceladas (incluye las "viejas" de una

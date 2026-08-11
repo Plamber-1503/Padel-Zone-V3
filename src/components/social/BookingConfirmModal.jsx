@@ -27,9 +27,10 @@ export default function BookingConfirmModal({ court, date, slot, modifyBooking, 
     setError('');
     try {
       if (isModify) {
-        await modifyBookingMutation.mutateAsync({ oldBooking: modifyBooking, newSlot: { date, startTime: slot.start, endTime: slot.end } });
+        const result = await modifyBookingMutation.mutateAsync({ oldBooking: modifyBooking, newSlot: { date, startTime: slot.start, endTime: slot.end } });
         setDone({
-          message: `Tu reserva para el día ${formatDate(modifyBooking.date)} ${(modifyBooking.start_time || '').slice(0, 5)} fue modificada para el día ${formatDate(date)} ${slot.start}.`
+          message: `Tu reserva para el día ${formatDate(modifyBooking.date)} ${(modifyBooking.start_time || '').slice(0, 5)} fue modificada para el día ${formatDate(date)} ${slot.start}.`,
+          externalGuestLinks: result?.external_guest_links || []
         });
       } else {
         const result = await createBooking.mutateAsync({
