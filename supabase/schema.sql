@@ -529,6 +529,14 @@ CREATE TRIGGER on_club_approved
 DROP POLICY IF EXISTS "Public Read Courts" ON public.courts;
 CREATE POLICY "Public Read Courts" ON public.courts FOR SELECT USING (true);
 
+-- Panel de dueño de club 2026-08-12: antes no había NINGUNA policy de
+-- escritura sobre courts, así que el dueño no podía crear/editar canchas
+-- reales aunque la UI lo permitiera (RLS lo bloqueaba en silencio).
+DROP POLICY IF EXISTS "Club Owner Manage Own Courts" ON public.courts;
+CREATE POLICY "Club Owner Manage Own Courts" ON public.courts
+  FOR ALL USING (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()));
+
 DROP POLICY IF EXISTS "Public Read Court Availability" ON public.court_availability;
 CREATE POLICY "Public Read Court Availability" ON public.court_availability FOR SELECT USING (true);
 

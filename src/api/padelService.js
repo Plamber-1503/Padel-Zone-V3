@@ -775,6 +775,93 @@ export const padelService = {
     }));
   },
 
+  // Panel del club 2026-08-12: canchas reales del club del dueño logueado
+  // (antes el panel mostraba TODAS las canchas de la app, mezcladas con
+  // altas que solo vivían en memoria y se perdían al refrescar).
+  async getMyClubCourts() {
+    const club = await this.getMyClubApplication();
+    if (!club) return { club: null, courts: [] };
+    const { data, error } = await supabase
+      .from('courts')
+      .select('*')
+      .eq('club_id', club.id)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`Error al leer las canchas del club: ${error.message}`);
+    return { club, courts: data || [] };
+  },
+
+  async createCourt({ clubId, name, surface, pricePerHour }) {
+    const { data, error } = await supabase
+      .from('courts')
+      .insert({ club_id: clubId, name, surface, price_per_hour: Number(pricePerHour) || 4500 })
+      .select()
+      .single();
+    if (error) throw new Error(`Error al crear la cancha: ${error.message}`);
+    return data;
+  },
+
+  async setCourtActive(courtId, isActive) {
+    const { data, error } = await supabase
+      .from('courts')
+      .update({ is_active: isActive })
+      .eq('id', courtId)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al actualizar la cancha: ${error.message}`);
+    return data;
+  },
+
+  // Métricas reales del club (reemplaza los literales fijos "$1.480.000",
+  // "94%", etc. que mostraba el panel B2B) — calculadas a partir de las
+  // reservas confirmadas del mes en curso sobre las canchas del club.
+  async getMyClubMetrics() {
+    const { club, courts } = await this.getMyClubCourts();
+    if (!club) return null;
+    const courtIds = courts.map((c) => c.id);
+    if (courtIds.length === 0) {
+      return { revenueThisMonth: 0, hoursBooked: 0, bookingsCount: 0, topCourt: null, topCourtSharePct: 0 };
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('court_id, price, start_time, end_time, date')
+      .in('court_id', courtIds)
+      .eq('status', 'confirmed')
+      .gte('date', monthStart);
+    if (error) throw new Error(`Error al calcular métricas: ${error.message}`);
+
+    let revenue = 0;
+    let minutes = 0;
+    const countByCourtId = {};
+    (bookings || []).forEach((b) => {
+      revenue += Number(b.price) || 0;
+      if (b.start_time && b.end_time) {
+        const [sh, sm] = b.start_time.split(':').map(Number);
+        const [eh, em] = b.end_time.split(':').map(Number);
+        minutes += (eh * 60 + em) - (sh * 60 + sm);
+      }
+      countByCourtId[b.court_id] = (countByCourtId[b.court_id] || 0) + 1;
+    });
+
+    let topCourtId = null;
+    let topCount = 0;
+    Object.entries(countByCourtId).forEach(([courtId, count]) => {
+      if (count > topCount) { topCount = count; topCourtId = courtId; }
+    });
+    const totalBookings = bookings?.length || 0;
+
+    return {
+      revenueThisMonth: revenue,
+      hoursBooked: Math.round((minutes / 60) * 10) / 10,
+      bookingsCount: totalBookings,
+      topCourt: courts.find((c) => c.id === topCourtId) || null,
+      topCourtSharePct: totalBookings > 0 && topCourtId ? Math.round((topCount / totalBookings) * 100) : 0
+    };
+  },
+
   // 6. POSTS SOCIALES
   async getPosts(filterTag = 'all') {
     const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
@@ -1316,6 +1403,43 @@ export function useRequestClubMembership() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my_club_application'] });
     }
+  });
+}
+
+// ── Panel de dueño de club: inventario de canchas y métricas reales ───────
+export function useMyClubCourts() {
+  return useQuery({
+    queryKey: ['my_club_courts'],
+    queryFn: () => padelService.getMyClubCourts()
+  });
+}
+
+export function useCreateCourt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createCourt(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
+export function useSetCourtActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ courtId, isActive }) => padelService.setCourtActive(courtId, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
+export function useMyClubMetrics() {
+  return useQuery({
+    queryKey: ['my_club_metrics'],
+    queryFn: () => padelService.getMyClubMetrics()
   });
 }
 

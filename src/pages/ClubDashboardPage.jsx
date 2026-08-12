@@ -1,78 +1,55 @@
 import React, { useState } from 'react';
-import { padelService, useCourts, useBookings, useCancelledBookingsForOwner } from '@/api/padelService';
+import { useMyClubCourts, useCreateCourt, useSetCourtActive, useMyClubMetrics, useCancelledBookingsForOwner } from '@/api/padelService';
 import {
   Building2,
   Plus,
-  Trash2,
   Power,
   BarChart3,
-  DollarSign,
-  Clock,
-  Trophy,
-  Users,
   Lock,
-  Sparkles,
-  CheckCircle,
-  AlertCircle,
-  Calendar,
   X,
-  ChevronRight,
   CalendarX,
-  Repeat
+  Repeat,
+  Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function ClubDashboardPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'metrics' | 'locks' | 'cancellations'
-  const { data: fetchedCourts = [] } = useCourts();
-  const { data: allBookings = [] } = useBookings();
-  const [courtsList, setCourtsList] = useState([]);
+  const { data: clubData, isLoading: isLoadingCourts } = useMyClubCourts();
+  const club = clubData?.club || null;
+  const courtsList = clubData?.courts || [];
+  const createCourt = useCreateCourt();
+  const setCourtActive = useSetCourtActive();
 
-  const displayCourts = courtsList.length > 0 ? courtsList : fetchedCourts;
   const [isAddCourtModalOpen, setIsAddCourtModalOpen] = useState(false);
+  const [addCourtError, setAddCourtError] = useState('');
 
   // Formulario para Agregar Nueva Cancha
   const [newCourtName, setNewCourtName] = useState('');
-  const [newCourtType, setNewCourtType] = useState('Cristal Panorámico WPT');
+  const [newCourtSurface, setNewCourtSurface] = useState('Cristal Panorámico WPT');
   const [newCourtPrice, setNewCourtPrice] = useState('4800');
 
-  // Alternar estado de cancha (Activar / Quitar Cancha)
-  const handleToggleCourtStatus = (courtId) => {
-    setCourtsList(prev =>
-      prev.map(c => {
-        if (c.id === courtId) {
-          const isCurrentlyActive = c.status !== 'inactive';
-          return {
-            ...c,
-            status: isCurrentlyActive ? 'inactive' : 'active'
-          };
-        }
-        return c;
-      })
-    );
+  // Alternar estado de cancha (Activar / Quitar Cancha) — persiste en Supabase.
+  const handleToggleCourtStatus = (court) => {
+    setCourtActive.mutate({ courtId: court.id, isActive: !court.is_active });
   };
 
-  // Agregar Nueva Cancha
+  // Agregar Nueva Cancha — persiste en Supabase, ya no se pierde al refrescar.
   const handleAddCourt = (e) => {
     e.preventDefault();
-    if (!newCourtName.trim()) return;
-
-    const createdCourt = {
-      id: `court-${Date.now()}`,
-      name: newCourtName,
-      type: newCourtType,
-      price: `$${parseInt(newCourtPrice).toLocaleString()}/hs`,
-      rating: 5.0,
-      reviews_count: 0,
-      status: 'active',
-      image_url: 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800&h=500&fit=crop'
-    };
-
-    setCourtsList(prev => [createdCourt, ...prev]);
-    setNewCourtName('');
-    setIsAddCourtModalOpen(false);
-    alert(`¡Cancha "${createdCourt.name}" agregada con éxito a la oferta del club!`);
+    if (!newCourtName.trim() || !club) return;
+    setAddCourtError('');
+    createCourt.mutate(
+      { clubId: club.id, name: newCourtName, surface: newCourtSurface, pricePerHour: newCourtPrice },
+      {
+        onSuccess: () => {
+          setNewCourtName('');
+          setIsAddCourtModalOpen(false);
+        },
+        onError: (err) => setAddCourtError(err.message)
+      }
+    );
   };
 
   // Volver al feed principal (el acceso de socio ahora depende de profiles.role,
@@ -96,7 +73,7 @@ export default function ClubDashboardPage() {
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded border border-amber-500/30">
                   Socio Club Verificado
                 </span>
-                <span className="text-xs text-slate-400">PadelClub Norte</span>
+                <span className="text-xs text-slate-400">{club?.name || 'Tu club'}</span>
               </div>
               <h1 className="font-extrabold text-2xl text-white tracking-tight mt-0.5">Portal de Administración de Canchas</h1>
             </div>
@@ -132,7 +109,7 @@ export default function ClubDashboardPage() {
             }`}
           >
             <Building2 className="w-4 h-4" />
-            <span>Gestión de Canchas ({courtsList.filter(c => c.status !== 'inactive').length} Activas)</span>
+            <span>Gestión de Canchas ({courtsList.filter(c => c.is_active).length} Activas)</span>
           </button>
 
           <button
@@ -190,10 +167,28 @@ export default function ClubDashboardPage() {
             </button>
           </div>
 
+          {isLoadingCourts && (
+            <p className="text-xs text-slate-400 flex items-center gap-2 py-6 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" /> Cargando canchas...
+            </p>
+          )}
+
+          {!isLoadingCourts && !club && (
+            <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+              No encontramos un club asociado a tu cuenta todavía.
+            </div>
+          )}
+
+          {!isLoadingCourts && club && courtsList.length === 0 && (
+            <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+              Todavía no cargaste ninguna cancha. Usá "Agregar Cancha" para sumar la primera.
+            </div>
+          )}
+
           {/* Tarjetas de Canchas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {courtsList.map((c) => {
-              const isActive = c.status !== 'inactive';
+              const isActive = c.is_active;
               return (
                 <div
                   key={c.id}
@@ -211,20 +206,21 @@ export default function ClubDashboardPage() {
                         {isActive ? '✓ Disponible para Reservas' : '⛔ Quitada / Fuera de Servicio'}
                       </span>
                       <h3 className="font-bold text-base text-white pt-1">{c.name}</h3>
-                      <p className="text-xs text-slate-400">{c.type || 'Superficie de Césped Sintético WPT'}</p>
+                      <p className="text-xs text-slate-400">{c.surface || 'Superficie de Césped Sintético WPT'}</p>
                     </div>
                   </div>
 
                   <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-800">
                     <span className="text-slate-400">Tarifa por hora:</span>
-                    <strong className="text-emerald-400 text-sm">{c.price || '$4.800/hs'}</strong>
+                    <strong className="text-emerald-400 text-sm">${Number(c.price_per_hour || 4500).toLocaleString()}/hs</strong>
                   </div>
 
                   {/* Acciones de la Cancha */}
                   <div className="pt-2 flex items-center gap-2">
                     <button
-                      onClick={() => handleToggleCourtStatus(c.id)}
-                      className={`flex-1 font-bold text-xs py-2.5 px-3 rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      onClick={() => handleToggleCourtStatus(c)}
+                      disabled={setCourtActive.isPending}
+                      className={`flex-1 font-bold text-xs py-2.5 px-3 rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 ${
                         isActive
                           ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/30'
                           : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border-emerald-500/30'
@@ -242,32 +238,7 @@ export default function ClubDashboardPage() {
       )}
 
       {/* ── SOLAPA 2: METRICAS Y FACTURACION ────────────────────────────── */}
-      {activeTab === 'metrics' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div className="bg-slate-900 p-4 rounded-2xl border border-emerald-500/30 space-y-1">
-              <span className="text-slate-400 text-xs">Facturación Este Mes</span>
-              <p className="font-black text-2xl text-emerald-400">$1.480.000</p>
-              <p className="text-[10px] text-emerald-300 font-semibold">+14% vs mes anterior</p>
-            </div>
-            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
-              <span className="text-slate-400 text-xs">Horas Alquiladas</span>
-              <p className="font-black text-2xl text-white">310 hs</p>
-              <p className="text-[10px] text-slate-400">Promedio 24hs/día</p>
-            </div>
-            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
-              <span className="text-slate-400 text-xs">Ocupación Noche (Pico)</span>
-              <p className="font-black text-2xl text-amber-400">94%</p>
-              <p className="text-[10px] text-emerald-400 font-semibold">Máxima demanda</p>
-            </div>
-            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
-              <span className="text-slate-400 text-xs">Cancha Más Alquilada</span>
-              <p className="font-bold text-sm text-white truncate mt-1">Cancha 1 Cristal WPT</p>
-              <p className="text-[10px] text-slate-400">42% del total</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'metrics' && <MetricsTab />}
 
       {/* ── SOLAPA 3: BLOQUEO DE TURNOS ─────────────────────────────────── */}
       {activeTab === 'locks' && (
@@ -275,14 +246,12 @@ export default function ClubDashboardPage() {
           <Lock className="w-10 h-10 text-amber-400 mx-auto" />
           <h3 className="font-bold text-white text-base">Bloqueo de Turnos por Mantenimiento o Clases</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Seleccioná una cancha y bloqueá un rango horario para que no pueda ser reservado por jugadores externos.
+            Próximamente vas a poder seleccionar una cancha y bloquear un rango horario para que no pueda ser
+            reservado por jugadores. Todavía no está disponible.
           </p>
-          <button
-            onClick={() => alert('Turno bloqueado para mantenimiento.')}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20 inline-flex items-center gap-2"
-          >
-            <Lock className="w-4 h-4" /> Bloquear Horario Específico
-          </button>
+          <span className="inline-flex items-center gap-2 bg-slate-800 text-slate-400 text-xs font-bold px-4 py-2 rounded-xl border border-slate-700">
+            <Lock className="w-4 h-4" /> Próximamente
+          </span>
         </div>
       )}
 
@@ -321,8 +290,8 @@ export default function ClubDashboardPage() {
               <div className="space-y-1">
                 <label className="font-bold text-slate-300">Tipo de Superficie / Estructura:</label>
                 <select
-                  value={newCourtType}
-                  onChange={(e) => setNewCourtType(e.target.value)}
+                  value={newCourtSurface}
+                  onChange={(e) => setNewCourtSurface(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="Cristal Panorámico WPT">Cristal Panorámico WPT</option>
@@ -344,17 +313,70 @@ export default function ClubDashboardPage() {
                 />
               </div>
 
+              {addCourtError && <p className="text-red-400">{addCourtError}</p>}
+
               <button
                 type="submit"
-                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                disabled={createCourt.isPending}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-60"
               >
-                Confirmar y Agregar Cancha
+                {createCourt.isPending ? 'Agregando...' : 'Confirmar y Agregar Cancha'}
               </button>
             </form>
           </div>
         </div>
       )}
 
+    </div>
+  );
+}
+
+// Métricas reales del club (mes en curso), calculadas en
+// padelService.getMyClubMetrics() a partir de las reservas confirmadas de
+// las canchas del club — ya no son valores fijos inventados en el código.
+function MetricsTab() {
+  const { data: metrics, isLoading } = useMyClubMetrics();
+
+  if (isLoading) {
+    return (
+      <p className="text-xs text-slate-400 flex items-center gap-2 py-6 justify-center">
+        <Loader2 className="w-4 h-4 animate-spin" /> Calculando métricas...
+      </p>
+    );
+  }
+
+  if (!metrics) {
+    return (
+      <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+        No encontramos un club asociado a tu cuenta todavía.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="bg-slate-900 p-4 rounded-2xl border border-emerald-500/30 space-y-1">
+          <span className="text-slate-400 text-xs">Facturación Este Mes</span>
+          <p className="font-black text-2xl text-emerald-400">${metrics.revenueThisMonth.toLocaleString()}</p>
+          <p className="text-[10px] text-slate-500 font-semibold">Reservas confirmadas del mes</p>
+        </div>
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
+          <span className="text-slate-400 text-xs">Horas Reservadas</span>
+          <p className="font-black text-2xl text-white">{metrics.hoursBooked} hs</p>
+          <p className="text-[10px] text-slate-500">Este mes</p>
+        </div>
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
+          <span className="text-slate-400 text-xs">Reservas Este Mes</span>
+          <p className="font-black text-2xl text-amber-400">{metrics.bookingsCount}</p>
+          <p className="text-[10px] text-slate-500">Turnos confirmados</p>
+        </div>
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-1">
+          <span className="text-slate-400 text-xs">Cancha Más Reservada</span>
+          <p className="font-bold text-sm text-white truncate mt-1">{metrics.topCourt?.name || '—'}</p>
+          <p className="text-[10px] text-slate-400">{metrics.topCourt ? `${metrics.topCourtSharePct}% del total` : 'Sin reservas todavía'}</p>
+        </div>
+      </div>
     </div>
   );
 }
