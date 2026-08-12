@@ -6,8 +6,13 @@ import {
   useSetCourtActive,
   useUploadCourtPhoto,
   useMyClubMetrics,
-  useCancelledBookingsForOwner
+  useCancelledBookingsForOwner,
+  usePosts,
+  useCreatePost
 } from '@/api/padelService';
+import { useAuth } from '@/context/AuthContext';
+import PostCard from '@/components/social/PostCard';
+import Logo from '@/components/ui/Logo';
 import {
   Building2,
   Plus,
@@ -22,9 +27,10 @@ import {
   LayoutGrid,
   Camera,
   ImagePlus,
-  ArrowRight
+  ArrowRight,
+  Megaphone
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const SURFACE_OPTIONS = ['Cristal Panorámico WPT', 'Moqueta Sintética Indoor', 'Techada Climatizada', 'Muro Clásico'];
 
@@ -40,6 +46,7 @@ const AMENITY_OPTIONS = [
 const TABS = [
   { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
   { id: 'inventory', label: 'Canchas', icon: Building2 },
+  { id: 'posts', label: 'Publicaciones', icon: Megaphone },
   { id: 'metrics', label: 'Métricas & Facturación', icon: BarChart3 },
   { id: 'locks', label: 'Bloqueo de Turnos', icon: Lock },
   { id: 'cancellations', label: 'Cancelaciones', icon: CalendarX }
@@ -59,7 +66,15 @@ export default function ClubDashboardPage() {
   const handleLogoutSocio = () => navigate('/');
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-[#080c14] text-slate-100 p-4 md:p-8">
+    <div className="max-w-6xl mx-auto space-y-6">
+
+      {/* ── TIRA DE MARCA (página propia, fuera del layout social) ──────── */}
+      <div className="flex items-center justify-between">
+        <Link to="/"><Logo size="sm" /></Link>
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Portal de Club</span>
+      </div>
+
       {/* ── HEADER DEL SOCIO CLUB B2B ───────────────────────────────────── */}
       <div className="bg-gradient-to-br from-[#151d33] to-[#0e1738] border border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-5">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -127,8 +142,9 @@ export default function ClubDashboardPage() {
 
           <div>
             <h2 className="font-bold text-base text-white mb-3">Accesos rápidos</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               <QuickCard icon={Building2} title="Agregar cancha" sub="Fotos, precio y diferenciales" onClick={() => setCourtModal('add')} />
+              <QuickCard icon={Megaphone} title="Publicar novedad" sub="Compartí fotos y novedades del club" onClick={() => setActiveTab('posts')} />
               <QuickCard icon={BarChart3} title="Ver métricas" sub="Facturación y ocupación reales" onClick={() => setActiveTab('metrics')} />
               <QuickCard icon={CalendarX} title="Cancelaciones" sub="Compromiso de tus jugadores" onClick={() => setActiveTab('cancellations')} />
             </div>
@@ -195,6 +211,9 @@ export default function ClubDashboardPage() {
         </div>
       )}
 
+      {/* ── PUBLICACIONES DEL CLUB ──────────────────────────────────────── */}
+      {activeTab === 'posts' && <ClubPostsTab club={club} courtsList={courtsList} />}
+
       {/* ── CANCELACIONES ────────────────────────────────────────────── */}
       {activeTab === 'cancellations' && <CancellationsTab />}
 
@@ -202,6 +221,7 @@ export default function ClubDashboardPage() {
       {courtModal && club && (
         <CourtFormModal club={club} court={courtModal === 'add' ? null : courtModal} onClose={() => setCourtModal(null)} />
       )}
+    </div>
     </div>
   );
 }
@@ -579,6 +599,174 @@ function CancellationsTab() {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// Publicaciones/novedades del club (fotos, avisos) — se muestran en el feed
+// social general de la app con la marca "Club Oficial", pero se cargan y se
+// ven acá, en el propio panel del club, no en el feed de otros socios.
+function ClubPostsTab({ club, courtsList }) {
+  const { data: allPosts = [], refetch } = usePosts('all');
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const courtIds = new Set(courtsList.map((c) => c.id));
+  const clubPosts = allPosts.filter((p) => courtIds.has(p.court_id));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-slate-900/90 p-4 rounded-2xl border border-slate-800">
+        <div>
+          <h2 className="font-bold text-base text-white">Publicaciones del Club</h2>
+          <p className="text-xs text-slate-400">Compartí fotos y novedades — se muestran en el feed social de la app con el sello "Club Oficial".</p>
+        </div>
+        <button
+          onClick={() => setIsComposerOpen(true)}
+          disabled={courtsList.length === 0}
+          className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow cursor-pointer shrink-0"
+        >
+          <Megaphone className="w-4 h-4" />
+          <span>Publicar Novedad</span>
+        </button>
+      </div>
+
+      {courtsList.length === 0 && (
+        <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+          Agregá una cancha primero — las novedades del club se publican asociadas a una de tus canchas.
+        </div>
+      )}
+
+      {courtsList.length > 0 && clubPosts.length === 0 && (
+        <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center text-slate-400 text-sm">
+          Todavía no publicaste ninguna novedad. Contales a los jugadores sobre promociones, eventos o novedades del club.
+        </div>
+      )}
+
+      <div className="space-y-3 max-w-xl">
+        {clubPosts.map((post) => (
+          <PostCard key={post.id} post={post} onPostUpdated={refetch} />
+        ))}
+      </div>
+
+      {isComposerOpen && (
+        <ClubPostComposerModal club={club} courtsList={courtsList} onClose={() => setIsComposerOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function ClubPostComposerModal({ club, courtsList, onClose }) {
+  const { user } = useAuth();
+  const createPost = useCreatePost();
+  const uploadPhoto = useUploadCourtPhoto();
+
+  const [content, setContent] = useState('');
+  const [courtId, setCourtId] = useState(courtsList[0]?.id || '');
+  const [photo, setPhoto] = useState(null); // { url, uploading }
+  const [error, setError] = useState('');
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const localUrl = URL.createObjectURL(file);
+    setPhoto({ url: localUrl, uploading: true });
+    uploadPhoto.mutate(
+      { clubId: club.id, file },
+      {
+        onSuccess: (publicUrl) => setPhoto({ url: publicUrl, uploading: false }),
+        onError: (err) => { setPhoto(null); setError(err.message); }
+      }
+    );
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!content.trim() || !courtId) return;
+    setError('');
+    const court = courtsList.find((c) => c.id === courtId);
+    createPost.mutate(
+      {
+        author_type: 'court',
+        author_name: club?.name || user?.full_name,
+        author_avatar: user?.avatar_url,
+        court_id: courtId,
+        court_name: court?.name || null,
+        type: 'standard',
+        content,
+        media_url: photo?.url || null
+      },
+      { onSuccess: onClose, onError: (err) => setError(err.message) }
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#0e1738] border border-emerald-500/40 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl relative my-auto max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 className="font-bold text-base text-white flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-emerald-400" /> Publicar Novedad
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-full cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {courtsList.length > 1 && (
+            <div className="space-y-1">
+              <label className="font-bold text-slate-300 block">Cancha asociada</label>
+              <select
+                value={courtId}
+                onChange={(e) => setCourtId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500"
+              >
+                {courtsList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <label className="font-bold text-slate-300 block">Novedad</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Ej: ¡Reinauguramos la Cancha 2 con nuevas luces LED! Vengan a probarla."
+              rows={4}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-300 block">Foto (opcional)</label>
+            {photo ? (
+              <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-700">
+                <img src={photo.url} alt="" className={`w-full h-full object-cover ${photo.uploading ? 'opacity-40' : ''}`} />
+                {photo.uploading && <Loader2 className="w-5 h-5 text-white animate-spin absolute inset-0 m-auto" />}
+                {!photo.uploading && (
+                  <button type="button" onClick={() => setPhoto(null)} className="absolute top-0.5 right-0.5 bg-slate-950/80 rounded-full p-0.5 cursor-pointer">
+                    <X className="w-3 h-3 text-white" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-4 cursor-pointer bg-slate-900/60 transition-colors">
+                <ImagePlus className="w-5 h-5 text-slate-500" />
+                <span className="font-bold text-slate-300">Agregar una foto</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+              </label>
+            )}
+          </div>
+
+          {error && <p className="text-red-400">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={createPost.isPending || photo?.uploading}
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-60"
+          >
+            {createPost.isPending ? 'Publicando...' : 'Publicar'}
+          </button>
+        </form>
       </div>
     </div>
   );

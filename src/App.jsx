@@ -184,6 +184,15 @@ export default function App() {
             element={<ProtectedRoute><StaffRoute><BackofficePage /></StaffRoute></ProtectedRoute>}
           />
 
+          {/* Portal de administración del club 2026-08-12: página propia, fuera
+              del layout social (sin sidebar de Feed/Partidos ni columna de
+              "Próxima Reserva" de otros clubes) — es la plataforma de negocio
+              del club, no una pantalla más del feed de jugadores. */}
+          <Route
+            path="/club-dashboard"
+            element={<ProtectedRoute><ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute></ProtectedRoute>}
+          />
+
           <Route element={<ProtectedRoute><BookingModalProvider><AppLayout /></BookingModalProvider></ProtectedRoute>}>
             <Route path="/" element={<HomeFeed />} />
             <Route path="/courts" element={<CourtsPage />} />
@@ -194,7 +203,6 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/profile/:id" element={<ProfilePage />} />
             <Route path="/mis-reservas" element={<MyBookingsPage />} />
-            <Route path="/club-dashboard" element={<ClubOwnerRoute><ClubDashboardPage /></ClubOwnerRoute>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
