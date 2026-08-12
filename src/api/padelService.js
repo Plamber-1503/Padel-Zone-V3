@@ -278,6 +278,37 @@ export const padelService = {
     return data;
   },
 
+  // Clubes virtuales 2026-08-12: el panel privado carga clubes "clave" sin
+  // dueño real, ya aprobados, para mostrar la app más poblada a clubes
+  // prospecto — y los puede prender/apagar (is_visible) según a quién se le
+  // muestre, sin perder el registro. Las canchas se cargan después con el
+  // mismo modal que usa el dueño de un club real (CourtFormModal).
+  async createVirtualClub({ name, address, city, phone, description }) {
+    const { data, error } = await supabase
+      .from('clubs')
+      .insert({
+        name,
+        address,
+        city: city || 'Buenos Aires',
+        phone: phone || null,
+        description: description || null,
+        status: 'approved',
+        is_visible: true,
+        is_virtual: true,
+        owner_id: null
+      })
+      .select()
+      .single();
+    if (error) throw new Error(`Error al crear el club virtual: ${error.message}`);
+    return data;
+  },
+
+  async setClubVisibility(clubId, isVisible) {
+    const { data, error } = await supabase.rpc('set_club_visibility', { p_club_id: clubId, p_is_visible: isVisible });
+    if (error) throw new Error(`Error al actualizar el club: ${error.message}`);
+    return data;
+  },
+
   async getAllUsersAdmin() {
     // A diferencia de getUsers(), esto lee la tabla real (con email) — RLS
     // solo se lo permite si tenés permiso 'users' o sos admin.
@@ -790,7 +821,7 @@ export const padelService = {
     return { club, courts: data || [] };
   },
 
-  async createCourt({ clubId, name, surface, pricePerHour, amenities = [], imageUrl, galleryImages = [] }) {
+  async createCourt({ clubId, name, surface, pricePerHour, amenities = [], imageUrl, galleryImages = [], isBookable = true }) {
     const { data, error } = await supabase
       .from('courts')
       .insert({
@@ -800,7 +831,8 @@ export const padelService = {
         price_per_hour: Number(pricePerHour) || 4500,
         amenities,
         image_url: imageUrl || galleryImages[0] || null,
-        gallery_images: galleryImages
+        gallery_images: galleryImages,
+        is_bookable: isBookable
       })
       .select()
       .single();
@@ -808,10 +840,36 @@ export const padelService = {
     return data;
   },
 
+  // Canchas de un club puntual — a diferencia de getMyClubCourts (acotado al
+  // club del dueño logueado), esto lo usa el panel privado para gestionar
+  // las canchas de CUALQUIER club virtual (RLS exige permiso de staff).
+  async getCourtsForClub(clubId) {
+    const { data, error } = await supabase
+      .from('courts')
+      .select('*')
+      .eq('club_id', clubId)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`Error al leer las canchas del club: ${error.message}`);
+    return data || [];
+  },
+
   async setCourtActive(courtId, isActive) {
     const { data, error } = await supabase
       .from('courts')
       .update({ is_active: isActive })
+      .eq('id', courtId)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al actualizar la cancha: ${error.message}`);
+    return data;
+  },
+
+  // Panel privado: marcar una cancha demo como reservable de verdad (para
+  // poder mostrar el flujo completo de reservas) o volverla de exhibición.
+  async setCourtBookable(courtId, isBookable) {
+    const { data, error } = await supabase
+      .from('courts')
+      .update({ is_bookable: isBookable })
       .eq('id', courtId)
       .select()
       .single();
@@ -1448,6 +1506,7 @@ export function useCreateCourt() {
     mutationFn: (data) => padelService.createCourt(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['club_courts'] });
       queryClient.invalidateQueries({ queryKey: ['courts'] });
     }
   });
@@ -1464,14 +1523,35 @@ export function useSetCourtActive() {
   });
 }
 
+export function useSetCourtBookable() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ courtId, isBookable }) => padelService.setCourtBookable(courtId, isBookable),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
 export function useUpdateCourt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ courtId, patch }) => padelService.updateCourt(courtId, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['club_courts'] });
       queryClient.invalidateQueries({ queryKey: ['courts'] });
     }
+  });
+}
+
+export function useCourtsForClub(clubId) {
+  return useQuery({
+    queryKey: ['club_courts', clubId],
+    queryFn: () => padelService.getCourtsForClub(clubId),
+    enabled: Boolean(clubId)
   });
 }
 
@@ -1519,6 +1599,27 @@ export function useRejectClub() {
     mutationFn: ({ clubId, reason }) => padelService.rejectClub(clubId, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_pending_clubs'] });
+    }
+  });
+}
+
+export function useCreateVirtualClub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.createVirtualClub(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_active_clubs'] });
+    }
+  });
+}
+
+export function useSetClubVisibility() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clubId, isVisible }) => padelService.setClubVisibility(clubId, isVisible),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_active_clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
     }
   });
 }

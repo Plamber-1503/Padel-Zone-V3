@@ -163,22 +163,28 @@ export default function ReserveTurnoModal() {
           {/* 3. Horario */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">3. Horario</label>
+            {court && court.is_bookable === false && (
+              <p className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                Esta cancha es de exhibición — no está disponible para reservar.
+              </p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
               {BOOKING_SLOTS.map((slot) => {
                 const isTaken = takenSlots.includes(slot.start);
+                const isDisabled = isTaken || !selectedCourtId || court?.is_bookable === false;
                 return (
                   <button
                     key={slot.start}
-                    disabled={isTaken || !selectedCourtId}
+                    disabled={isDisabled}
                     onClick={() => handleSlotClick(slot)}
                     className={`p-3.5 rounded-2xl border transition-all ${
-                      isTaken
+                      isDisabled
                         ? 'bg-slate-800/40 border-slate-800 opacity-50 cursor-not-allowed'
                         : 'bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 border-slate-700 hover:border-emerald-400 cursor-pointer shadow-md'
                     }`}
                   >
                     <p className="font-bold text-xs">{slot.label}</p>
-                    <p className="text-[10px] mt-1">{isTaken ? 'Ocupado' : 'Disponible'}</p>
+                    <p className="text-[10px] mt-1">{isTaken ? 'Ocupado' : court?.is_bookable === false ? 'No reservable' : 'Disponible'}</p>
                   </button>
                 );
               })}

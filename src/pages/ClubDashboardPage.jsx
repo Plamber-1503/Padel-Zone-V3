@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   useMyClubCourts,
-  useCreateCourt,
-  useUpdateCourt,
-  useSetCourtActive,
   useUploadCourtPhoto,
   useMyClubMetrics,
   useCancelledBookingsForOwner,
@@ -12,12 +9,12 @@ import {
 } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
+import CourtCard from '@/components/social/CourtCard';
+import CourtFormModal from '@/components/social/CourtFormModal';
 import Logo from '@/components/ui/Logo';
 import {
   Building2,
   Plus,
-  Pencil,
-  Power,
   BarChart3,
   Lock,
   X,
@@ -25,7 +22,6 @@ import {
   Repeat,
   Loader2,
   LayoutGrid,
-  Camera,
   ImagePlus,
   ArrowRight,
   Megaphone,
@@ -33,17 +29,6 @@ import {
   Moon
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-
-const SURFACE_OPTIONS = ['Cristal Panorámico WPT', 'Moqueta Sintética Indoor', 'Techada Climatizada', 'Muro Clásico'];
-
-// Diferenciales que más buscan los jugadores al elegir cancha. Los primeros
-// 4 son los mismos strings que ya trae sembrada la base (courts.amenities)
-// para no romper continuidad con canchas existentes.
-const AMENITY_OPTIONS = [
-  'Iluminación LED', 'Vestuarios', 'Estacionamiento', 'Bar & Resto',
-  'Paredes de vidrio', 'Techada / Climatizada', 'Aire acondicionado', 'Wifi gratis',
-  'Alquiler de paletas', 'Cámara de grabación', 'Acceso accesible', 'Superficie premium'
-];
 
 const TABS = [
   { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
@@ -295,272 +280,6 @@ function QuickCard({ isDark, icon: Icon, title, sub, onClick }) {
       </div>
       <ArrowRight className={cx(isDark, 'text-slate-600', 'text-slate-400') + ' w-4 h-4 shrink-0'} />
     </button>
-  );
-}
-
-function CourtCard({ isDark, court: c, onEdit }) {
-  const setCourtActive = useSetCourtActive();
-  const isActive = c.is_active;
-  const amenities = c.amenities || [];
-
-  return (
-    <div
-      className={`border rounded-3xl overflow-hidden transition-all relative ${
-        isActive
-          ? cx(isDark, 'bg-slate-900/90 border-slate-800 shadow-lg', 'bg-white border-slate-200 shadow-lg')
-          : cx(isDark, 'bg-slate-950/60 border-red-500/30 opacity-75', 'bg-red-50 border-red-300 opacity-90')
-      }`}
-    >
-      <div className={cx(isDark, 'bg-slate-800', 'bg-slate-100') + ' h-36 relative'}>
-        {c.image_url ? (
-          <img src={c.image_url} alt={c.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className={cx(isDark, 'text-slate-600', 'text-slate-400') + ' w-full h-full flex items-center justify-center'}>
-            <Camera className="w-8 h-8" />
-          </div>
-        )}
-        <button
-          onClick={onEdit}
-          className={cx(isDark, 'bg-slate-950/80 hover:bg-slate-900 text-slate-200 border-slate-700', 'bg-white/90 hover:bg-white text-slate-700 border-slate-300') + ' absolute top-2.5 right-2.5 p-1.5 rounded-lg border cursor-pointer'}
-          title="Editar cancha"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <div className="p-5 space-y-4">
-        <div className="space-y-1">
-          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-            isActive
-              ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30'
-              : 'bg-red-500/20 text-red-500 border-red-500/30'
-          }`}>
-            {isActive ? '✓ Disponible para Reservas' : '⛔ Quitada / Fuera de Servicio'}
-          </span>
-          <h3 className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-base pt-1'}>{c.name}</h3>
-          <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs'}>{c.surface || 'Superficie de Césped Sintético WPT'}</p>
-        </div>
-
-        {amenities.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {amenities.slice(0, 4).map((a) => (
-              <span key={a} className={cx(isDark, 'text-slate-400 bg-slate-800 border-slate-700', 'text-slate-600 bg-slate-100 border-slate-200') + ' text-[10px] font-bold border px-2 py-1 rounded-lg'}>{a}</span>
-            ))}
-            {amenities.length > 4 && (
-              <span className={cx(isDark, 'text-slate-500', 'text-slate-400') + ' text-[10px] font-bold px-1 py-1'}>+{amenities.length - 4}</span>
-            )}
-          </div>
-        )}
-
-        <div className={cx(isDark, 'border-slate-800', 'border-slate-200') + ' flex justify-between items-center text-xs pt-2 border-t'}>
-          <span className={cx(isDark, 'text-slate-400', 'text-slate-500')}>Tarifa por hora:</span>
-          <strong className="text-emerald-500 text-sm">${Number(c.price_per_hour || 4500).toLocaleString()}/hs</strong>
-        </div>
-
-        <div className="pt-1 flex items-center gap-2">
-          <button
-            onClick={() => setCourtActive.mutate({ courtId: c.id, isActive: !c.is_active })}
-            disabled={setCourtActive.isPending}
-            className={`flex-1 font-bold text-xs py-2.5 px-3 rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 ${
-              isActive
-                ? 'bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/30'
-                : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border-emerald-500/30'
-            }`}
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span>{isActive ? 'Quitar de Disponibles' : 'Activar Cancha'}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Modal compartido para "Agregar cancha" (court=null) y "Editar cancha"
-// (court=objeto existente) — fotos reales a Supabase Storage y
-// diferenciales guardados en courts.amenities.
-function CourtFormModal({ isDark, club, court, onClose }) {
-  const isEdit = Boolean(court);
-  const createCourt = useCreateCourt();
-  const updateCourt = useUpdateCourt();
-  const uploadPhoto = useUploadCourtPhoto();
-
-  const [name, setName] = useState(court?.name || '');
-  const [surface, setSurface] = useState(court?.surface || SURFACE_OPTIONS[0]);
-  const [price, setPrice] = useState(court?.price_per_hour || 4800);
-  const [amenities, setAmenities] = useState(new Set(court?.amenities || []));
-  const [photos, setPhotos] = useState(
-    (court?.gallery_images?.length ? court.gallery_images : court?.image_url ? [court.image_url] : []).map((url) => ({ url, uploading: false }))
-  );
-  const [error, setError] = useState('');
-
-  const busy = createCourt.isPending || updateCourt.isPending;
-  const inputCls = cx(isDark, 'bg-slate-900 border-slate-700 text-white placeholder-slate-500', 'bg-white border-slate-300 text-slate-900 placeholder-slate-400') + ' w-full border rounded-xl p-2.5 focus:outline-none focus:border-emerald-500';
-  const labelCls = cx(isDark, 'text-slate-300', 'text-slate-600') + ' font-bold';
-
-  const toggleAmenity = (a) => {
-    setAmenities((prev) => {
-      const next = new Set(prev);
-      if (next.has(a)) next.delete(a); else next.add(a);
-      return next;
-    });
-  };
-
-  const handleFiles = (fileList) => {
-    const files = Array.from(fileList || []).slice(0, 6 - photos.length);
-    files.forEach((file) => {
-      const localUrl = URL.createObjectURL(file);
-      setPhotos((prev) => [...prev, { url: localUrl, uploading: true }]);
-      uploadPhoto.mutate(
-        { clubId: club.id, file },
-        {
-          onSuccess: (publicUrl) => {
-            setPhotos((prev) => prev.map((p) => (p.url === localUrl ? { url: publicUrl, uploading: false } : p)));
-          },
-          onError: (err) => {
-            setPhotos((prev) => prev.filter((p) => p.url !== localUrl));
-            setError(err.message);
-          }
-        }
-      );
-    });
-  };
-
-  const removePhoto = (url) => setPhotos((prev) => prev.filter((p) => p.url !== url));
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setError('');
-    const galleryImages = photos.filter((p) => !p.uploading).map((p) => p.url);
-    const payload = {
-      name,
-      surface,
-      price_per_hour: Number(price) || 4500,
-      amenities: [...amenities],
-      image_url: galleryImages[0] || null,
-      gallery_images: galleryImages
-    };
-
-    if (isEdit) {
-      updateCourt.mutate({ courtId: court.id, patch: payload }, { onSuccess: onClose, onError: (err) => setError(err.message) });
-    } else {
-      createCourt.mutate(
-        { clubId: club.id, name, surface, pricePerHour: price, amenities: [...amenities], imageUrl: galleryImages[0], galleryImages },
-        { onSuccess: onClose, onError: (err) => setError(err.message) }
-      );
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className={cx(isDark, 'bg-[#0e1738] border-emerald-500/40', 'bg-white border-emerald-300') + ' border rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl relative my-auto max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200'}>
-        <div className={cx(isDark, 'border-slate-800', 'border-slate-200') + ' flex items-center justify-between border-b pb-3'}>
-          <h3 className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-base flex items-center gap-2'}>
-            <Plus className="w-5 h-5 text-emerald-500 stroke-[3]" /> {isEdit ? 'Editar Cancha' : 'Agregar Nueva Cancha'}
-          </h3>
-          <button onClick={onClose} className={cx(isDark, 'text-slate-400 hover:text-white bg-slate-800', 'text-slate-500 hover:text-slate-900 bg-slate-100') + ' p-1.5 rounded-full cursor-pointer'}>
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* Fotos */}
-          <div className="space-y-1.5">
-            <label className={labelCls + ' block'}>Fotos de la cancha</label>
-            <label className={cx(isDark, 'border-slate-700 hover:border-emerald-500/60 bg-slate-900/60', 'border-slate-300 hover:border-emerald-500/60 bg-slate-50') + ' flex flex-col items-center justify-center gap-1.5 border-2 border-dashed rounded-xl p-5 cursor-pointer transition-colors'}>
-              <ImagePlus className={cx(isDark, 'text-slate-500', 'text-slate-400') + ' w-5 h-5'} />
-              <span className={labelCls}>Hacé click para elegir fotos</span>
-              <span className={cx(isDark, 'text-slate-500', 'text-slate-400') + ' text-[10.5px]'}>La primera foto es la portada — hasta 6 fotos</span>
-              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} disabled={photos.length >= 6} />
-            </label>
-            {photos.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {photos.map((p) => (
-                  <div key={p.url} className={cx(isDark, 'border-slate-700', 'border-slate-300') + ' relative w-16 h-16 rounded-lg overflow-hidden border shrink-0'}>
-                    <img src={p.url} alt="" className={`w-full h-full object-cover ${p.uploading ? 'opacity-40' : ''}`} />
-                    {p.uploading && <Loader2 className="w-4 h-4 text-white animate-spin absolute inset-0 m-auto" />}
-                    {!p.uploading && (
-                      <button type="button" onClick={() => removePhoto(p.url)} className="absolute top-0.5 right-0.5 bg-slate-950/80 rounded-full p-0.5 cursor-pointer">
-                        <X className="w-3 h-3 text-white" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className={labelCls}>Nombre</label>
-              <input
-                type="text"
-                placeholder="ej. Cancha 4 — Panorámica"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={inputCls}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Precio por Hora ($)</label>
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className={inputCls}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className={labelCls + ' block'}>Tipo de Superficie / Estructura</label>
-            <select
-              value={surface}
-              onChange={(e) => setSurface(e.target.value)}
-              className={inputCls}
-            >
-              {SURFACE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className={labelCls + ' block'}>Diferenciales de la cancha</label>
-            <div className="flex flex-wrap gap-2">
-              {AMENITY_OPTIONS.map((a) => {
-                const on = amenities.has(a);
-                return (
-                  <button
-                    type="button"
-                    key={a}
-                    onClick={() => toggleAmenity(a)}
-                    className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
-                      on
-                        ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/50'
-                        : cx(isDark, 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-600', 'bg-slate-50 text-slate-500 border-slate-300 hover:border-slate-400')
-                    }`}
-                  >
-                    {a}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {error && <p className="text-red-500">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-60"
-          >
-            {busy ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Confirmar y Agregar Cancha'}
-          </button>
-        </form>
-      </div>
-    </div>
   );
 }
 

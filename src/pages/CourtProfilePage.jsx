@@ -78,9 +78,11 @@ export default function CourtProfilePage() {
             </button>
             <button
               onClick={() => openBookingModal({ courtId: court.id })}
-              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
+              disabled={court.is_bookable === false}
+              title={court.is_bookable === false ? 'Cancha de exhibición — no disponible para reservar' : undefined}
+              className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
             >
-              Reservar Turno
+              {court.is_bookable === false ? 'No reservable' : 'Reservar Turno'}
             </button>
           </div>
         </div>

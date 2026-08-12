@@ -67,6 +67,13 @@ ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 
+-- Clubes virtuales 2026-08-12: el panel privado puede cargar clubes "clave"
+-- (sin dueño real, owner_id NULL) para mostrar la app más poblada a
+-- clubes prospecto, y prenderlos/apagarlos (is_visible) según a quién se
+-- le muestre — sin perder el registro al apagarlos.
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS is_visible BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS is_virtual BOOLEAN NOT NULL DEFAULT false;
+
 -- --------------------------------------------------------------------
 -- 3. TABLA DE CANCHAS VINCULADAS A CLUBES (courts)
 -- --------------------------------------------------------------------
@@ -91,6 +98,12 @@ CREATE TABLE IF NOT EXISTS public.courts (
   location GEOGRAPHY(POINT, 4326),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Canchas de clubes virtuales no se pueden reservar de verdad (no hay
+-- cancha real detrás) — se navegan igual que cualquier otra, pero el botón
+-- de reservar queda deshabilitado y el INSERT en bookings se bloquea a
+-- nivel de base de datos también (ver policy más abajo).
+ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS is_bookable BOOLEAN NOT NULL DEFAULT true;
 
 -- --------------------------------------------------------------------
 -- 4. TABLA DE DISPONIBILIDAD DE CANCHAS (court_availability)
@@ -490,24 +503,61 @@ FROM public.profiles;
 
 GRANT SELECT ON public.profiles_public TO authenticated, anon;
 
--- Clubes: público solo ve los aprobados; el dueño ve su propia solicitud en
--- cualquier estado; quien tenga el permiso 'pending_clubs' (o admin) ve
--- también las pendientes/rechazadas, para poder revisarlas.
+-- Clubes: público solo ve los aprobados Y visibles (is_visible=true — los
+-- clubes virtuales "apagados" quedan realmente ocultos, no solo fuera de la
+-- lista); el dueño ve su propia solicitud en cualquier estado; quien tenga
+-- el permiso 'pending_clubs' o 'active_clubs' (o admin) ve todo, para poder
+-- revisar y administrar.
 DROP POLICY IF EXISTS "Public Read Clubs" ON public.clubs;
 CREATE POLICY "Public Read Clubs" ON public.clubs
   FOR SELECT USING (
-    status = 'approved'
+    (status = 'approved' AND is_visible = true)
     OR owner_id = auth.uid()
     OR public.has_staff_permission('pending_clubs')
+    OR public.has_staff_permission('active_clubs')
   );
 
 DROP POLICY IF EXISTS "Users Request Club" ON public.clubs;
 CREATE POLICY "Users Request Club" ON public.clubs
   FOR INSERT WITH CHECK (auth.uid() = owner_id AND status = 'pending');
 
+-- Clubes virtuales 2026-08-12: el panel privado los crea directamente ya
+-- aprobados, sin dueño real — acotado a esas dos condiciones para que este
+-- permiso no sirva para forzar de otro modo el alta de un club "real".
+DROP POLICY IF EXISTS "Staff Create Virtual Clubs" ON public.clubs;
+CREATE POLICY "Staff Create Virtual Clubs" ON public.clubs
+  FOR INSERT WITH CHECK (
+    public.has_staff_permission('active_clubs')
+    AND is_virtual = true
+    AND owner_id IS NULL
+    AND status = 'approved'
+  );
+
 DROP POLICY IF EXISTS "Staff Review Clubs" ON public.clubs;
 CREATE POLICY "Staff Review Clubs" ON public.clubs
   FOR UPDATE USING (public.has_staff_permission('pending_clubs'));
+
+-- Prender/apagar la visibilidad de un club aprobado (real o virtual) — vía
+-- función SECURITY DEFINER en vez de ampliar la policy de UPDATE general,
+-- así el permiso 'active_clubs' solo alcanza para esto, no para aprobar o
+-- rechazar solicitudes (eso sigue siendo exclusivo de 'pending_clubs').
+CREATE OR REPLACE FUNCTION public.set_club_visibility(p_club_id UUID, p_is_visible BOOLEAN)
+RETURNS public.clubs
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.clubs;
+BEGIN
+  IF NOT public.has_staff_permission('active_clubs') THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+  UPDATE public.clubs SET is_visible = p_is_visible WHERE id = p_club_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_club_visibility(UUID, BOOLEAN) TO authenticated;
 
 -- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
 -- (así el panel de socio que ya existe le funciona sin pasos manuales extra).
@@ -526,8 +576,19 @@ CREATE TRIGGER on_club_approved
   AFTER UPDATE ON public.clubs
   FOR EACH ROW EXECUTE FUNCTION public.sync_club_owner_role();
 
+-- Clubes virtuales 2026-08-12: una cancha solo es públicamente visible si su
+-- club está aprobado Y visible — así "apagar" un club virtual lo saca de
+-- verdad de la app, no solo de la lista de un lugar puntual. El dueño real
+-- sigue viendo sus propias canchas en cualquier estado, y el staff con
+-- permiso ve todo (para poder administrar clubes virtuales).
 DROP POLICY IF EXISTS "Public Read Courts" ON public.courts;
-CREATE POLICY "Public Read Courts" ON public.courts FOR SELECT USING (true);
+CREATE POLICY "Public Read Courts" ON public.courts
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.status = 'approved' AND clubs.is_visible = true)
+    OR EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid())
+    OR public.has_staff_permission('pending_clubs')
+    OR public.has_staff_permission('active_clubs')
+  );
 
 -- Panel de dueño de club 2026-08-12: antes no había NINGUNA policy de
 -- escritura sobre courts, así que el dueño no podía crear/editar canchas
@@ -536,6 +597,20 @@ DROP POLICY IF EXISTS "Club Owner Manage Own Courts" ON public.courts;
 CREATE POLICY "Club Owner Manage Own Courts" ON public.courts
   FOR ALL USING (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()))
   WITH CHECK (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()));
+
+-- El panel privado carga/edita canchas de clubes virtuales con el mismo
+-- modal que usa el dueño real — acotado a clubs.is_virtual=true para que
+-- este permiso no alcance para tocar canchas de clubes reales ajenos.
+DROP POLICY IF EXISTS "Staff Manage Virtual Club Courts" ON public.courts;
+CREATE POLICY "Staff Manage Virtual Club Courts" ON public.courts
+  FOR ALL USING (
+    public.has_staff_permission('active_clubs')
+    AND EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.is_virtual = true)
+  )
+  WITH CHECK (
+    public.has_staff_permission('active_clubs')
+    AND EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.is_virtual = true)
+  );
 
 -- --------------------------------------------------------------------
 -- Fotos de canchas (Supabase Storage) 2026-08-12: bucket público para
@@ -583,6 +658,21 @@ CREATE POLICY "Club Owner Delete Court Photos" ON storage.objects
       WHERE clubs.id::text = (storage.foldername(name))[1]
       AND clubs.owner_id = auth.uid()
     )
+  );
+
+-- El panel privado sube/gestiona fotos de canchas de clubes virtuales (sin
+-- dueño real) con el mismo componente que usa el dueño de un club real.
+DROP POLICY IF EXISTS "Staff Manage Virtual Club Photos" ON storage.objects;
+CREATE POLICY "Staff Manage Virtual Club Photos" ON storage.objects
+  FOR ALL USING (
+    bucket_id = 'court-photos'
+    AND public.has_staff_permission('active_clubs')
+    AND EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id::text = (storage.foldername(name))[1] AND clubs.is_virtual = true)
+  )
+  WITH CHECK (
+    bucket_id = 'court-photos'
+    AND public.has_staff_permission('active_clubs')
+    AND EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id::text = (storage.foldername(name))[1] AND clubs.is_virtual = true)
   );
 
 DROP POLICY IF EXISTS "Public Read Court Availability" ON public.court_availability;
@@ -644,7 +734,15 @@ DROP POLICY IF EXISTS "Users Delete Own Bookings" ON public.bookings;
 -- La lectura de turnos sigue siendo pública: se necesita para mostrar qué
 -- horarios están ocupados en el calendario de cada cancha a cualquier visitante.
 CREATE POLICY "Public Read Bookings" ON public.bookings FOR SELECT USING (true);
-CREATE POLICY "Users Create Bookings" ON public.bookings FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- Clubes virtuales 2026-08-12: además de ser tu propia reserva, la cancha
+-- tiene que ser reservable de verdad (courts.is_bookable) — bloquea a nivel
+-- de base de datos que alguien reserve un turno en una cancha de demo/
+-- exhibición, no solo que el botón esté deshabilitado en la UI.
+CREATE POLICY "Users Create Bookings" ON public.bookings
+  FOR INSERT WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (SELECT 1 FROM public.courts WHERE courts.id = court_id AND courts.is_bookable = true)
+  );
 CREATE POLICY "Users Update Own Bookings" ON public.bookings FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users Delete Own Bookings" ON public.bookings FOR DELETE USING (auth.uid() = user_id);
 
@@ -775,7 +873,7 @@ GRANT EXECUTE ON FUNCTION public.toggle_post_like(UUID) TO authenticated;
 -- ====================================================================
 -- SEED DATA INICIAL (CLUBES Y CANCHAS)
 -- ====================================================================
-INSERT INTO public.clubs (id, name, address, city, phone, description, rating, reviews_count)
+INSERT INTO public.clubs (id, name, address, city, phone, description, rating, reviews_count, status)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
   'Padel Zone Central',
@@ -784,8 +882,16 @@ VALUES (
   '+54 11 4567-8900',
   'Club premium con 6 canchas de cristal panorámicas de última generación.',
   4.9,
-  128
+  128,
+  'approved'
 ) ON CONFLICT (id) DO NOTHING;
+
+-- El club de arriba se sembró originalmente sin 'status', así que en una
+-- base ya existente quedó en 'pending' (el default de la columna) — lo
+-- corrige acá para que sus canchas no desaparezcan con la nueva policy de
+-- "Public Read Courts" (exige club aprobado y visible).
+UPDATE public.clubs SET status = 'approved', is_visible = true
+WHERE id = '00000000-0000-0000-0000-000000000001' AND status <> 'approved';
 
 INSERT INTO public.courts (id, club_id, name, surface, is_indoor, price_per_hour, rating, reviews_count, description, image_url, cover_image_url)
 VALUES
