@@ -1,54 +1,22 @@
 import React, { useState } from 'react';
-import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
-import { useCourt, useCourts, usePosts, useBookings } from '@/api/padelService';
+import { useParams } from 'react-router-dom';
+import { useCourt, useCourts, usePosts } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
+import { useBookingModal } from '@/context/BookingModalContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
 import CourtBusinessDashboardModal from '@/components/social/CourtBusinessDashboardModal';
-import RecurringBookingModal from '@/components/social/RecurringBookingModal';
-import BookingConfirmModal from '@/components/social/BookingConfirmModal';
-import { MapPin, Star, Calendar, MessageSquare, ShieldCheck, Plus, Sparkles, Building2, Wifi, Car, Utensils, Zap, BarChart3, Pencil } from 'lucide-react';
-
-// `start`/`end` son la hora real (formato "HH:MM", válido para la columna
-// TIME de Postgres); `label` es solo el texto que se muestra en el botón.
-const BOOKING_SLOTS = [
-  { start: '17:00', end: '18:30', label: '17:00 - 18:30' },
-  { start: '18:30', end: '20:00', label: '18:30 - 20:00' },
-  { start: '20:00', end: '21:30', label: '20:00 - 21:30' },
-  { start: '21:30', end: '23:00', label: '21:30 - 23:00' }
-];
-
-const WEEKDAY_LABELS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-
-// Próximos 7 días (hoy incluido) para elegir en qué fecha reservar.
-function getNextDays(count = 7) {
-  const days = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const value = d.toISOString().split('T')[0];
-    const label = i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : `${WEEKDAY_LABELS[d.getDay()]} ${d.getDate()}`;
-    days.push({ value, label });
-  }
-  return days;
-}
+import { MapPin, Star, MessageSquare, ShieldCheck, Plus, Building2 } from 'lucide-react';
 
 export default function CourtProfilePage() {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const location = useLocation();
   const { user, toggleFollow } = useAuth();
+  const { open: openBookingModal } = useBookingModal();
   const { data: courtDetail } = useCourt(id);
   const { data: allCourts = [] } = useCourts();
   const court = courtDetail || allCourts.find(c => c.id === id) || allCourts[0] || { id, name: 'Cancha', rating: 4.8 };
 
-  // Reserva en curso a modificar (llega desde "Mis Reservas" → Modificar).
-  const modifyBooking = location.state?.modifyBooking || null;
-
-  // Auditoría 2026-08-10: "Reservar Turno" desde el listado de canchas
-  // (CourtsPage) ahora manda ?tab=booking para no obligar a un segundo clic
-  // acá adentro. ?recurring=1 llega al reconstruir una serie modificada.
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'booking' || modifyBooking ? 'booking' : 'feed');
+  const [activeTab, setActiveTab] = useState('feed');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
@@ -56,29 +24,6 @@ export default function CourtProfilePage() {
 
   const { data: allPosts = [], refetch: reloadPosts } = usePosts('all');
   const courtPosts = allPosts.filter(p => p.court_id === court.id);
-
-  const [bookingDays] = useState(() => getNextDays(7));
-  const [selectedDate, setSelectedDate] = useState(bookingDays[0].value);
-  const [isRecurring, setIsRecurring] = useState(searchParams.get('recurring') === '1');
-  const [recurringSlot, setRecurringSlot] = useState(null);
-  const [pendingSlot, setPendingSlot] = useState(null); // turno esperando confirmación (simple o modificar)
-  const { data: courtBookings = [] } = useBookings(court.id, selectedDate);
-  // El horario real guardado en la base (columna TIME) viene como "17:00:00" —
-  // comparamos solo "HH:MM" contra el horario de inicio de cada turno.
-  const takenSlots = courtBookings.map(b => (b.start_time || '').slice(0, 5));
-
-  const handleSlotClick = (slot) => {
-    // Con "reserva recurrente" tildado, no se reserva directo — se abre el
-    // modal que revisa disponibilidad de las ~4 fechas del mes antes de nada.
-    if (isRecurring && !modifyBooking) {
-      setRecurringSlot(slot);
-      return;
-    }
-    // Auditoría 2026-08-10: antes esto reservaba directo al hacer clic — ahora
-    // siempre se confirma primero en un popup (día, hora, y si es una
-    // modificación, el turno viejo que va a reemplazar).
-    setPendingSlot(slot);
-  };
 
   return (
     <div className="space-y-6">
@@ -132,7 +77,7 @@ export default function CourtProfilePage() {
               {isFollowingClub ? '✓ Siguiendo Club' : '+ Seguir Club'}
             </button>
             <button
-              onClick={() => setActiveTab('booking')}
+              onClick={() => openBookingModal({ courtId: court.id })}
               className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
             >
               Reservar Turno
@@ -161,18 +106,6 @@ export default function CourtProfilePage() {
           >
             <MessageSquare className="w-4 h-4" />
             <span>Feed Social del Club ({courtPosts.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('booking')}
-            className={`py-3.5 border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'booking'
-                ? 'border-emerald-400 text-emerald-400'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Turnos Disponibles</span>
           </button>
 
           <button
@@ -222,77 +155,6 @@ export default function CourtProfilePage() {
         </div>
       )}
 
-      {/* ── TAB CONTENT: BOOKING SHIFTS ────────────────────────────────── */}
-      {activeTab === 'booking' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-            <div>
-              <h3 className="font-bold text-lg text-white">Turnos Disponibles — {court.name}</h3>
-              <p className="text-xs text-slate-400">Superficie: {court.surface} • ${court.price_per_hour?.toLocaleString()} / hora</p>
-            </div>
-          </div>
-
-          {modifyBooking && (
-            <div className="flex items-center gap-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200">
-              <Pencil className="w-4 h-4 shrink-0" />
-              <span>
-                Modificando tu turno del {modifyBooking.date} a las {(modifyBooking.start_time || '').slice(0, 5)} — elegí el nuevo día y horario.
-              </span>
-            </div>
-          )}
-
-          {/* Selector de día — próximos 7 días */}
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {bookingDays.map((day) => (
-              <button
-                key={day.value}
-                onClick={() => setSelectedDate(day.value)}
-                className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  selectedDate === day.value
-                    ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
-                }`}
-              >
-                {day.label}
-              </button>
-            ))}
-          </div>
-
-          {!modifyBooking && (
-            <label className="flex items-center gap-2.5 bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-3 cursor-pointer w-fit">
-              <input
-                type="checkbox"
-                checked={isRecurring}
-                onChange={(e) => setIsRecurring(e.target.checked)}
-                className="w-4 h-4 accent-emerald-500 cursor-pointer"
-              />
-              <span className="text-xs font-bold text-slate-200">Reserva recurrente (30 días) — mismo día y horario cada semana</span>
-            </label>
-          )}
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            {BOOKING_SLOTS.map((slot) => {
-              const isTaken = takenSlots.includes(slot.start);
-              return (
-                <button
-                  key={slot.start}
-                  disabled={isTaken}
-                  onClick={() => handleSlotClick(slot)}
-                  className={`p-4 rounded-2xl border transition-all ${
-                    isTaken
-                      ? 'bg-slate-800/40 border-slate-800 opacity-50 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 border-slate-700 hover:border-emerald-400 cursor-pointer shadow-md'
-                  }`}
-                >
-                  <p className="font-bold text-sm">{slot.label}</p>
-                  <p className="text-[11px] mt-1">{isTaken ? 'Ocupado' : 'Disponible'}</p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ── TAB CONTENT: REVIEWS ────────────────────────────────────────── */}
       {activeTab === 'reviews' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
@@ -330,29 +192,6 @@ export default function CourtProfilePage() {
         onClose={() => setIsDashboardOpen(false)}
         court={court}
       />
-
-      {/* Modal de Reserva Recurrente — montado solo mientras está abierto */}
-      {recurringSlot && (
-        <RecurringBookingModal
-          court={court}
-          anchorDate={selectedDate}
-          initialSlot={recurringSlot}
-          today={bookingDays[0].value}
-          slots={BOOKING_SLOTS}
-          onClose={() => setRecurringSlot(null)}
-        />
-      )}
-
-      {/* Popup de confirmación — reserva simple o modificación de un turno */}
-      {pendingSlot && (
-        <BookingConfirmModal
-          court={court}
-          date={selectedDate}
-          slot={pendingSlot}
-          modifyBooking={modifyBooking}
-          onClose={() => setPendingSlot(null)}
-        />
-      )}
     </div>
   );
 }

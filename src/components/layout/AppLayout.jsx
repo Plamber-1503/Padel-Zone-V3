@@ -6,6 +6,7 @@ import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useU
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import ClubApplicationModal from '@/components/social/ClubApplicationModal';
+import ReserveTurnoModal from '@/components/social/ReserveTurnoModal';
 import {
   Home,
   CalendarDays,
@@ -571,6 +572,10 @@ export default function AppLayout() {
         isOpen={isClubAuthModalOpen}
         onClose={() => setIsClubAuthModalOpen(false)}
       />
+
+      {/* Popup global de "Reservar Turno" — se dispara desde cualquier botón
+          de la app vía useBookingModal(), en vez de una tarjeta por cancha. */}
+      <ReserveTurnoModal />
     </div>
   );
 }

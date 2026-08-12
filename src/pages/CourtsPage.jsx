@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCourts } from '@/api/padelService';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useBookingModal } from '@/context/BookingModalContext';
 import { MapPin, Star, ShieldCheck, Search } from 'lucide-react';
 
 export default function CourtsPage() {
@@ -8,6 +9,7 @@ export default function CourtsPage() {
   const [search, setSearch] = useState(searchParams.get('q') || '');
   const [surfaceFilter, setSurfaceFilter] = useState('all');
   const { data: courts = [], isLoading } = useCourts();
+  const { open: openBookingModal } = useBookingModal();
 
   // Si el usuario busca de nuevo desde el header estando ya en esta página,
   // sincronizamos el input con el nuevo query param.
@@ -102,12 +104,12 @@ export default function CourtsPage() {
                 >
                   Ver Feed del Club
                 </Link>
-                <Link
-                  to={`/court/${court.id}?tab=booking`}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2.5 rounded-xl text-center shadow transition-all hover:scale-105"
+                <button
+                  onClick={() => openBookingModal({ courtId: court.id })}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2.5 rounded-xl text-center shadow transition-all hover:scale-105 cursor-pointer"
                 >
                   Reservar Turno
-                </Link>
+                </button>
               </div>
             </div>
 

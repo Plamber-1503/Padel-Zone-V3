@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useMyBookings, useCancelBooking } from '@/api/padelService';
+import { useBookingModal } from '@/context/BookingModalContext';
 import { CalendarClock, MapPin, Repeat, User, XCircle, Pencil, Loader2, MessageCircle, X } from 'lucide-react';
 
 function formatDate(iso) {
@@ -31,7 +31,7 @@ function groupBookings(bookings) {
 export default function MyBookingsPage() {
   const { data: bookings = [], isLoading } = useMyBookings();
   const cancelBooking = useCancelBooking();
-  const navigate = useNavigate();
+  const { open: openBookingModal } = useBookingModal();
   const [cancellingGroup, setCancellingGroup] = useState(null); // group actualmente eligiendo alcance
   const [cancelWaLinks, setCancelWaLinks] = useState(null); // invitados externos a avisar tras cancelar
 
@@ -39,14 +39,14 @@ export default function MyBookingsPage() {
 
   const handleModify = (group) => {
     if (group.items.length > 1) {
-      // Modificar toda la serie: la cancelamos y lo mandamos a armar una
-      // nueva reserva recurrente desde cero para esa cancha.
+      // Modificar toda la serie: la cancelamos y abrimos el popup de reserva
+      // recurrente, ya anclado a esta misma cancha, para armar una nueva.
       if (!window.confirm('Esto va a cancelar toda la serie actual para que armes una nueva. ¿Continuar?')) return;
       cancelBooking.mutate({ booking: group, scope: 'series' }, {
-        onSuccess: () => navigate(`/court/${group.court_id}?tab=booking&recurring=1`)
+        onSuccess: () => openBookingModal({ courtId: group.court_id, isRecurring: true })
       });
     } else {
-      navigate(`/court/${group.court_id}?tab=booking`, { state: { modifyBooking: group } });
+      openBookingModal({ courtId: group.court_id, modifyBooking: group });
     }
   };
 

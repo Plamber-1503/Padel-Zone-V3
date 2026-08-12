@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { BookingModalProvider } from '@/context/BookingModalContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useRequestStaffAccess } from '@/api/padelService';
 import AppLayout from '@/components/layout/AppLayout';
@@ -183,7 +184,7 @@ export default function App() {
             element={<ProtectedRoute><StaffRoute><BackofficePage /></StaffRoute></ProtectedRoute>}
           />
 
-          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+          <Route element={<ProtectedRoute><BookingModalProvider><AppLayout /></BookingModalProvider></ProtectedRoute>}>
             <Route path="/" element={<HomeFeed />} />
             <Route path="/courts" element={<CourtsPage />} />
             <Route path="/court/:id" element={<CourtProfilePage />} />
