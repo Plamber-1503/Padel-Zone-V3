@@ -218,8 +218,23 @@ export default function ClubDashboardPage() {
       {activeTab === 'cancellations' && <CancellationsTab />}
 
       {/* ── MODAL AGREGAR / EDITAR CANCHA ───────────────────────────── */}
-      {courtModal && club && (
-        <CourtFormModal club={club} court={courtModal === 'add' ? null : courtModal} onClose={() => setCourtModal(null)} />
+      {courtModal && (
+        club ? (
+          <CourtFormModal club={club} court={courtModal === 'add' ? null : courtModal} onClose={() => setCourtModal(null)} />
+        ) : (
+          <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-[#0e1738] border border-red-500/40 rounded-3xl w-full max-w-sm p-6 space-y-3 text-center shadow-2xl">
+              <p className="text-sm font-bold text-white">No encontramos un club asociado a tu cuenta.</p>
+              <p className="text-xs text-slate-400">
+                Para agregar canchas primero necesitás una solicitud de club aprobada. Si ya tenés un club, avisale a soporte que
+                tu cuenta no aparece vinculada.
+              </p>
+              <button onClick={() => setCourtModal(null)} className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-4 py-2 rounded-xl cursor-pointer">
+                Entendido
+              </button>
+            </div>
+          </div>
+        )
       )}
     </div>
     </div>
