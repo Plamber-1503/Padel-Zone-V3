@@ -537,6 +537,54 @@ CREATE POLICY "Club Owner Manage Own Courts" ON public.courts
   FOR ALL USING (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()))
   WITH CHECK (EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id = courts.club_id AND clubs.owner_id = auth.uid()));
 
+-- --------------------------------------------------------------------
+-- Fotos de canchas (Supabase Storage) 2026-08-12: bucket público para
+-- lectura (las fotos se muestran a todos los jugadores), escritura
+-- restringida al dueño del club dueño de esa carpeta. Los archivos se
+-- guardan como '{club_id}/{archivo}', así la policy puede verificar
+-- dueño del club a partir del primer segmento de la ruta.
+-- --------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('court-photos', 'court-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Public Read Court Photos" ON storage.objects;
+CREATE POLICY "Public Read Court Photos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'court-photos');
+
+DROP POLICY IF EXISTS "Club Owner Upload Court Photos" ON storage.objects;
+CREATE POLICY "Club Owner Upload Court Photos" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'court-photos'
+    AND EXISTS (
+      SELECT 1 FROM public.clubs
+      WHERE clubs.id::text = (storage.foldername(name))[1]
+      AND clubs.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Club Owner Manage Court Photos" ON storage.objects;
+CREATE POLICY "Club Owner Manage Court Photos" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'court-photos'
+    AND EXISTS (
+      SELECT 1 FROM public.clubs
+      WHERE clubs.id::text = (storage.foldername(name))[1]
+      AND clubs.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Club Owner Delete Court Photos" ON storage.objects;
+CREATE POLICY "Club Owner Delete Court Photos" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'court-photos'
+    AND EXISTS (
+      SELECT 1 FROM public.clubs
+      WHERE clubs.id::text = (storage.foldername(name))[1]
+      AND clubs.owner_id = auth.uid()
+    )
+  );
+
 DROP POLICY IF EXISTS "Public Read Court Availability" ON public.court_availability;
 CREATE POLICY "Public Read Court Availability" ON public.court_availability FOR SELECT USING (true);
 

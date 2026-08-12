@@ -790,10 +790,18 @@ export const padelService = {
     return { club, courts: data || [] };
   },
 
-  async createCourt({ clubId, name, surface, pricePerHour }) {
+  async createCourt({ clubId, name, surface, pricePerHour, amenities = [], imageUrl, galleryImages = [] }) {
     const { data, error } = await supabase
       .from('courts')
-      .insert({ club_id: clubId, name, surface, price_per_hour: Number(pricePerHour) || 4500 })
+      .insert({
+        club_id: clubId,
+        name,
+        surface,
+        price_per_hour: Number(pricePerHour) || 4500,
+        amenities,
+        image_url: imageUrl || galleryImages[0] || null,
+        gallery_images: galleryImages
+      })
       .select()
       .single();
     if (error) throw new Error(`Error al crear la cancha: ${error.message}`);
@@ -809,6 +817,26 @@ export const padelService = {
       .single();
     if (error) throw new Error(`Error al actualizar la cancha: ${error.message}`);
     return data;
+  },
+
+  // Edición general (nombre, precio, superficie, fotos, diferenciales) de una
+  // cancha ya creada — reutiliza el mismo modal de "Agregar cancha".
+  async updateCourt(courtId, patch) {
+    const { data, error } = await supabase.from('courts').update(patch).eq('id', courtId).select().single();
+    if (error) throw new Error(`Error al actualizar la cancha: ${error.message}`);
+    return data;
+  },
+
+  // Sube una foto al bucket 'court-photos' (público para lectura, escritura
+  // restringida por RLS de storage al dueño del club) y devuelve su URL
+  // pública para guardar en courts.image_url / courts.gallery_images.
+  async uploadCourtPhoto(clubId, file) {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${clubId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from('court-photos').upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(`Error al subir la foto: ${error.message}`);
+    const { data } = supabase.storage.from('court-photos').getPublicUrl(path);
+    return data.publicUrl;
   },
 
   // Métricas reales del club (reemplaza los literales fijos "$1.480.000",
@@ -1433,6 +1461,23 @@ export function useSetCourtActive() {
       queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
       queryClient.invalidateQueries({ queryKey: ['courts'] });
     }
+  });
+}
+
+export function useUpdateCourt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ courtId, patch }) => padelService.updateCourt(courtId, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
+export function useUploadCourtPhoto() {
+  return useMutation({
+    mutationFn: ({ clubId, file }) => padelService.uploadCourtPhoto(clubId, file)
   });
 }
 
