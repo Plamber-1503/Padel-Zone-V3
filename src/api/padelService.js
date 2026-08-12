@@ -106,6 +106,17 @@ export const padelService = {
     return data;
   },
 
+  // Auditoría 2026-08-12 (incidente): si el SELECT de abajo no encontraba el
+  // perfil por una carrera transitoria (ej. justo después de un refresh de
+  // token, un instante donde auth.uid() todavía no resuelve igual que el id
+  // de la sesión), esta función asumía "no existe" y hacía upsert() con los
+  // valores por defecto (role: 'player', etc.) — como el upsert por defecto
+  // hace UPDATE si la fila ya existía, esto podía pisar el role/staff_permissions
+  // reales de un usuario (admin incluido, porque la policy de UPDATE le permite
+  // escribir su propia fila sin restricción). Pasa esto mismo le borró el rol
+  // admin a un usuario real en producción. Ahora el upsert usa
+  // ignoreDuplicates: true (ON CONFLICT DO NOTHING) — si la fila ya existe,
+  // nunca la toca, pase lo que pase con el SELECT previo.
   async ensureProfile(userObj) {
     if (!userObj?.id) return null;
     if (!isSupabaseConfigured || !supabase) return userObj;
@@ -128,11 +139,15 @@ export const padelService = {
       matches_won: 0
     };
 
-    const { data, error } = await supabase.from('profiles').upsert(newProfile).select().maybeSingle();
+    const { error } = await supabase.from('profiles').upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true });
     if (error) {
       console.warn('Error upserting profile in Supabase:', error.message);
     }
-    return data || newProfile;
+
+    // Releemos siempre: si la fila ya existía (el insert no hizo nada por
+    // ignoreDuplicates), esto trae los datos reales en vez del default.
+    const { data: finalProfile } = await supabase.from('profiles').select('*').eq('id', userObj.id).maybeSingle();
+    return finalProfile || newProfile;
   },
 
   // Nota (auditoría 2026-08-09, incidente de seguridad): existió acá un
