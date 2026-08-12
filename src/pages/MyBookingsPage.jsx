@@ -108,10 +108,11 @@ export default function MyBookingsPage() {
 
       {groups.map((group) => {
         const isSeries = group.items.length > 1;
-        const isChoosingScope = cancellingGroup === group.recurrence_id || cancellingGroup === group.id;
+        const groupKey = group.recurrence_id || group.id;
+        const isChoosingScope = cancellingGroup !== null && cancellingGroup === groupKey;
 
         return (
-          <div key={group.recurrence_id || group.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div key={groupKey} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -151,6 +152,12 @@ export default function MyBookingsPage() {
                   <button onClick={() => handleCancel(group, isSeries ? 'series' : 'single')} className="text-[11px] font-bold bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg">
                     {isSeries ? 'Toda la serie' : 'Sí, cancelar'}
                   </button>
+                  <button
+                    onClick={() => { setCancellingGroup(null); handleModify(group); }}
+                    className="text-[11px] font-bold text-emerald-400 hover:underline px-2 flex items-center gap-1"
+                  >
+                    <Pencil className="w-3 h-3" /> Modificar en cambio
+                  </button>
                   <button onClick={() => setCancellingGroup(null)} className="text-[11px] text-slate-400 px-2">Volver</button>
                 </div>
               ) : (
@@ -162,7 +169,7 @@ export default function MyBookingsPage() {
                     <Pencil className="w-3.5 h-3.5" /> Modificar reserva
                   </button>
                   <button
-                    onClick={() => setCancellingGroup(group.recurrence_id || group.id)}
+                    onClick={() => setCancellingGroup(groupKey)}
                     className="flex items-center gap-1.5 bg-slate-800 hover:bg-red-500/20 text-red-400 text-xs font-bold px-3 py-2 rounded-xl border border-red-500/30"
                   >
                     <XCircle className="w-3.5 h-3.5" /> Cancelar reserva
