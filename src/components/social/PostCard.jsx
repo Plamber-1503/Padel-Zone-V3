@@ -7,9 +7,12 @@ import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-export default function PostCard({ post, onPostUpdated }) {
+export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }) {
   const { user } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark: globalIsDark } = useTheme();
+  // Paneles con tema propio (club, admin) pasan isDark explícito para no
+  // depender del tema global de la app — si no lo pasan, sigue como antes.
+  const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : globalIsDark;
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
   const { data: openMatches = [] } = useOpenMatches();
