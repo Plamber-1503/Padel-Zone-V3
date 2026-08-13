@@ -34,8 +34,11 @@ export default function OpenMatchesPage() {
     }
 
     const hostUser = match.host_id ? { id: match.host_id } : usersList.find(u => u.full_name === match.host_name);
-    const targetId = hostUser ? hostUser.id : 'u-lucas';
-    navigate(`/chat?user=${targetId}&msg=${encodeURIComponent(defaultMsg)}`);
+    if (!hostUser) {
+      alert('No pudimos identificar quién organiza este partido — probá de nuevo más tarde.');
+      return;
+    }
+    navigate(`/chat?user=${hostUser.id}&msg=${encodeURIComponent(defaultMsg)}`);
   };
 
   return (
