@@ -22,10 +22,12 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
   const [matchTime, setMatchTime] = useState('20:00 - 21:30');
   const [matchLevel, setMatchLevel] = useState('4ta Categoría (Intermedio)');
   const [matchPrice, setMatchPrice] = useState('1200');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim() && postType === 'standard') return;
 
@@ -52,11 +54,19 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
       } : null
     };
 
-    padelService.createPost(postPayload);
-    setContent('');
-    setMediaUrl('');
-    onClose();
-    if (onPostCreated) onPostCreated();
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await padelService.createPost(postPayload);
+      setContent('');
+      setMediaUrl('');
+      onClose();
+      if (onPostCreated) onPostCreated();
+    } catch (err) {
+      setError(err.message || 'No se pudo publicar. Intentá de nuevo.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -201,14 +211,17 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
             </div>
           )}
 
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
           {/* Submit */}
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+              disabled={isSubmitting}
+              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Publicar</span>
+              <span>{isSubmitting ? 'Publicando...' : 'Publicar'}</span>
             </button>
           </div>
         </form>

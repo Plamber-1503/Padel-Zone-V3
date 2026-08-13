@@ -967,7 +967,7 @@ export const padelService = {
   async getPosts(filterTag = 'all') {
     const { data, error } = await supabase
       .from('posts')
-      .select('*, comments(*)')
+      .select('*, comments(*), courts(club_id, clubs(owner_id, is_virtual, allow_comments))')
       .order('created_at', { ascending: false })
       .order('created_at', { foreignTable: 'comments', ascending: true });
     let posts = data;
@@ -978,7 +978,15 @@ export const padelService = {
     const currentUser = this.getCurrentUser();
     if (filterTag === 'following') {
       const followingSet = new Set(currentUser.following_ids || []);
-      return posts.filter(p => followingSet.has(p.author_id) || p.author_id === currentUser.id);
+      // Un club publica con la cuenta del staff (author_id), no con el id
+      // del club — así que "seguís al club" (su court_id está en
+      // following_ids) no matcheaba nunca contra author_id. Ahora también
+      // cuenta seguir la cancha/club de la publicación.
+      return posts.filter(p =>
+        followingSet.has(p.author_id) ||
+        (p.court_id && followingSet.has(p.court_id)) ||
+        p.author_id === currentUser.id
+      );
     }
     if (filterTag === 'open_matches') {
       return posts.filter(p => p.type === 'open_match');
@@ -987,6 +995,36 @@ export const padelService = {
       return posts.filter(p => p.type === 'match_result');
     }
     return posts;
+  },
+
+  // Editar/eliminar la propia publicación — sin ventana de tiempo.
+  async updatePost(postId, { content, media_url }) {
+    const { data, error } = await supabase
+      .from('posts')
+      .update({ content, media_url: media_url || null, updated_at: new Date().toISOString() })
+      .eq('id', postId)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al editar la publicación: ${error.message}`);
+    return data;
+  },
+
+  async deletePost(postId) {
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) throw new Error(`Error al eliminar la publicación: ${error.message}`);
+  },
+
+  // Borra un comentario — el propio autor, o el dueño del club moderando su
+  // propia publicación (RLS valida cuál de los dos casos aplica).
+  async deleteComment(commentId) {
+    const { error } = await supabase.from('comments').delete().eq('id', commentId);
+    if (error) throw new Error(`Error al eliminar el comentario: ${error.message}`);
+  },
+
+  async setClubCommentsAllowed(clubId, allowed) {
+    const { data, error } = await supabase.rpc('set_club_comments_allowed', { p_club_id: clubId, p_allowed: allowed });
+    if (error) throw new Error(`Error al actualizar el club: ${error.message}`);
+    return data;
   },
 
   async getCourtFeed(courtId) {
@@ -1444,6 +1482,41 @@ export function useAddComment() {
   return useMutation({
     mutationFn: ({ postId, text }) => padelService.addComment(postId, text),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    }
+  });
+}
+
+export function useUpdatePost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ postId, content, media_url }) => padelService.updatePost(postId, { content, media_url }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['posts'] })
+  });
+}
+
+export function useDeletePost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (postId) => padelService.deletePost(postId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['posts'] })
+  });
+}
+
+export function useDeleteComment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (commentId) => padelService.deleteComment(commentId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['posts'] })
+  });
+}
+
+export function useSetClubCommentsAllowed() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clubId, allowed }) => padelService.setClubCommentsAllowed(clubId, allowed),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
       queryClient.invalidateQueries({ queryKey: ['posts'] });
     }
   });

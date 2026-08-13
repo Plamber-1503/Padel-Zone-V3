@@ -5,7 +5,8 @@ import {
   useMyClubMetrics,
   useCancelledBookingsForOwner,
   usePosts,
-  useCreatePost
+  useCreatePost,
+  useSetClubCommentsAllowed
 } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/social/PostCard';
@@ -26,7 +27,8 @@ import {
   ArrowRight,
   Megaphone,
   Sun,
-  Moon
+  Moon,
+  MessageCircle
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 
@@ -371,8 +373,10 @@ function CancellationsTab({ isDark }) {
 function ClubPostsTab({ isDark, club, courtsList }) {
   const { data: allPosts = [], refetch } = usePosts('all');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const setCommentsAllowed = useSetClubCommentsAllowed();
   const courtIds = new Set(courtsList.map((c) => c.id));
   const clubPosts = allPosts.filter((p) => courtIds.has(p.court_id));
+  const commentsAllowed = club?.allow_comments !== false;
 
   return (
     <div className="space-y-4">
@@ -390,6 +394,33 @@ function ClubPostsTab({ isDark, club, courtsList }) {
           <span>Publicar Novedad</span>
         </button>
       </div>
+
+      {club && (
+        <div className={cx(isDark, 'bg-slate-900/90 border-slate-800', 'bg-white border-slate-200') + ' flex items-center justify-between gap-3 p-4 rounded-2xl border'}>
+          <div className="flex items-center gap-3">
+            <div className={cx(isDark, 'bg-slate-800 text-slate-300', 'bg-slate-100 text-slate-600') + ' w-9 h-9 rounded-xl flex items-center justify-center shrink-0'}>
+              <MessageCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-sm'}>Comentarios de tus seguidores</p>
+              <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs'}>
+                Aplica a todas tus publicaciones — {commentsAllowed ? 'tus seguidores pueden comentarlas.' : 'los comentarios están desactivados.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCommentsAllowed.mutate({ clubId: club.id, allowed: !commentsAllowed })}
+            disabled={setCommentsAllowed.isPending}
+            className={`shrink-0 text-xs font-bold px-3 py-2 rounded-xl border transition-colors cursor-pointer disabled:opacity-60 ${
+              commentsAllowed
+                ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/30'
+                : cx(isDark, 'bg-slate-800 text-slate-400 border-slate-700', 'bg-slate-100 text-slate-500 border-slate-300')
+            }`}
+          >
+            {commentsAllowed ? 'Activados' : 'Desactivados'}
+          </button>
+        </div>
+      )}
 
       {courtsList.length === 0 && (
         <EmptyState isDark={isDark}>Agregá una cancha primero — las novedades del club se publican asociadas a una de tus canchas.</EmptyState>

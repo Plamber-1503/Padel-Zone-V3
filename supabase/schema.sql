@@ -74,6 +74,10 @@ ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS is_visible BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS is_virtual BOOLEAN NOT NULL DEFAULT false;
 
+-- Interruptor general de comentarios 2026-08-13: una sola configuración por
+-- club que aplica a TODAS sus publicaciones (no por publicación individual).
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
+
 -- --------------------------------------------------------------------
 -- 3. TABLA DE CANCHAS VINCULADAS A CLUBES (courts)
 -- --------------------------------------------------------------------
@@ -302,6 +306,11 @@ CREATE TABLE IF NOT EXISTS public.posts (
   likes UUID[] DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Editar/eliminar la propia publicación 2026-08-13: sin ventana de tiempo,
+-- el dueño puede corregirla cuando quiera. updated_at deja mostrar "editado"
+-- en la UI, como Facebook.
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 
 -- Comentarios 2026-08-13: el botón de comentar en el feed llamaba a
 -- padelService.addComment, que no existía, ni había tabla — tiraba error y
@@ -572,6 +581,31 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.set_club_visibility(UUID, BOOLEAN) TO authenticated;
 
+-- Interruptor general de comentarios del club 2026-08-13: lo puede prender/
+-- apagar el dueño real del club, o el staff con permiso 'active_clubs'
+-- (para clubes virtuales). Vía función en vez de abrir un UPDATE genérico
+-- sobre clubs, que dejaría tocar otras columnas (status, etc.).
+CREATE OR REPLACE FUNCTION public.set_club_comments_allowed(p_club_id UUID, p_allowed BOOLEAN)
+RETURNS public.clubs
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.clubs;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.clubs
+    WHERE id = p_club_id AND (owner_id = auth.uid() OR public.has_staff_permission('active_clubs'))
+  ) THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+  UPDATE public.clubs SET allow_comments = p_allowed WHERE id = p_club_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_club_comments_allowed(UUID, BOOLEAN) TO authenticated;
+
 -- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
 -- (así el panel de socio que ya existe le funciona sin pasos manuales extra).
 CREATE OR REPLACE FUNCTION public.sync_club_owner_role()
@@ -779,7 +813,10 @@ DROP POLICY IF EXISTS "Users Create Posts" ON public.posts;
 DROP POLICY IF EXISTS "Users Update Own Posts" ON public.posts;
 DROP POLICY IF EXISTS "Users Delete Own Posts" ON public.posts;
 CREATE POLICY "Users Create Posts" ON public.posts FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "Users Update Own Posts" ON public.posts FOR UPDATE USING (auth.uid() = author_id);
+-- Editar/eliminar la propia publicación 2026-08-13: WITH CHECK evita que la
+-- edición reasigne la publicación a otro author_id.
+CREATE POLICY "Users Update Own Posts" ON public.posts
+  FOR UPDATE USING (auth.uid() = author_id) WITH CHECK (auth.uid() = author_id);
 CREATE POLICY "Users Delete Own Posts" ON public.posts FOR DELETE USING (auth.uid() = author_id);
 -- Nota: "dar me gusta" ya NO pasa por un UPDATE directo del cliente sobre esta
 -- tabla (eso hubiera requerido reabrir el UPDATE a cualquier usuario). En su
@@ -791,9 +828,25 @@ ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Read Comments" ON public.comments;
 CREATE POLICY "Public Read Comments" ON public.comments FOR SELECT USING (true);
 
+-- Interruptor de comentarios 2026-08-13: si el post pertenece a una cancha
+-- de un club con allow_comments = false, no se puede comentar — se evalúa
+-- acá, no solo en la UI, para que no se pueda saltear. Los posts sin
+-- court_id (publicaciones de un jugador común) nunca quedan bloqueados.
 DROP POLICY IF EXISTS "Users Create Comments" ON public.comments;
-CREATE POLICY "Users Create Comments" ON public.comments FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Users Create Comments" ON public.comments
+  FOR INSERT WITH CHECK (
+    auth.uid() = author_id
+    AND NOT EXISTS (
+      SELECT 1 FROM public.posts p
+      JOIN public.courts c ON c.id = p.court_id
+      JOIN public.clubs cl ON cl.id = c.club_id
+      WHERE p.id = post_id AND cl.allow_comments = false
+    )
+  );
 
+-- Borrar comentarios 2026-08-13: solo el propio autor — el club NO modera
+-- comentarios ajenos, únicamente decide si sus publicaciones admiten
+-- comentarios en absoluto (allow_comments, arriba).
 DROP POLICY IF EXISTS "Users Delete Own Comments" ON public.comments;
 CREATE POLICY "Users Delete Own Comments" ON public.comments FOR DELETE USING (auth.uid() = author_id);
 

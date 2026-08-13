@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment } from '@/api/padelService';
-import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2 } from 'lucide-react';
+import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment } from '@/api/padelService';
+import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2, Pencil, Trash2, X, Check, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -16,13 +16,27 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState('');
   const [showComments, setShowComments] = useState(false);
+  const [isEditingPost, setIsEditingPost] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [editError, setEditError] = useState('');
   const { data: openMatches = [] } = useOpenMatches();
   const joinMatchMutation = useJoinOpenMatch();
   const addCommentMutation = useAddComment();
+  const updatePostMutation = useUpdatePost();
+  const deletePostMutation = useDeletePost();
+  const deleteCommentMutation = useDeleteComment();
 
   const likes = post.likes || [];
   const isLiked = likes.includes(user?.id);
   const comments = post.comments || [];
+  const isOwnPost = post.author_id === user?.id;
+
+  // El club de la cancha dueña de este post — solo para saber si desactivó
+  // comentarios en sus publicaciones (el club no modera comentarios ajenos,
+  // cada quien borra únicamente el suyo). Posts sin cancha asociada
+  // (jugador común) nunca quedan bloqueados.
+  const club = post.courts?.clubs || null;
+  const commentsAllowed = club ? club.allow_comments !== false : true;
 
   const linkedMatch = post.match_id ? openMatches.find(m => m.id === post.match_id) : null;
   const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
@@ -63,6 +77,37 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
     );
   };
 
+  const handleSaveEdit = () => {
+    if (!editContent.trim()) return;
+    setEditError('');
+    updatePostMutation.mutate(
+      { postId: post.id, content: editContent, media_url: post.media_url },
+      {
+        onSuccess: () => {
+          setIsEditingPost(false);
+          if (onPostUpdated) onPostUpdated();
+        },
+        onError: (err) => setEditError(err.message)
+      }
+    );
+  };
+
+  const handleDeletePost = () => {
+    if (!window.confirm('¿Eliminar esta publicación? No se puede deshacer.')) return;
+    deletePostMutation.mutate(post.id, {
+      onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
+      onError: (err) => alert(err.message)
+    });
+  };
+
+  const handleDeleteComment = (commentId) => {
+    if (!window.confirm('¿Eliminar este comentario?')) return;
+    deleteCommentMutation.mutate(commentId, {
+      onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
+      onError: (err) => alert(err.message)
+    });
+  };
+
   const formattedDate = post.created_at
     ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: es })
     : 'recientemente';
@@ -97,7 +142,7 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
             </div>
             
             <div className={`flex items-center gap-2 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              <span>{formattedDate}</span>
+              <span>{formattedDate}{post.updated_at && ' · editado'}</span>
               {post.court_name && (
                 <>
                   <span>•</span>
@@ -110,26 +155,77 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
           </div>
         </div>
 
-        {/* Post Type Badge */}
-        {post.type === 'open_match' && (
-          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
-            isDark ? 'bg-amber-400/10 text-amber-400 border-amber-400/20' : 'bg-amber-100 text-amber-900 border-amber-300'
-          }`}>
-            <Zap className="w-3 h-3 fill-current" /> Partido Abierto
-          </span>
-        )}
-        {post.type === 'match_result' && (
-          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
-            isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-          }`}>
-            <Trophy className="w-3 h-3" /> Marcador
-          </span>
-        )}
+        {/* Badge de tipo + controles de editar/eliminar (si es mía) */}
+        <div className="flex items-center gap-2 shrink-0">
+          {post.type === 'open_match' && (
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
+              isDark ? 'bg-amber-400/10 text-amber-400 border-amber-400/20' : 'bg-amber-100 text-amber-900 border-amber-300'
+            }`}>
+              <Zap className="w-3 h-3 fill-current" /> Partido Abierto
+            </span>
+          )}
+          {post.type === 'match_result' && (
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
+              isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+            }`}>
+              <Trophy className="w-3 h-3" /> Marcador
+            </span>
+          )}
+
+          {isOwnPost && !isEditingPost && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setEditContent(post.content); setEditError(''); setIsEditingPost(true); }}
+                title="Editar publicación"
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isDark ? 'text-slate-500 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+                title="Eliminar publicación"
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${isDark ? 'text-slate-500 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       <div className="px-4 pb-3 space-y-3">
-        <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{post.content}</p>
+        {isEditingPost ? (
+          <div className="space-y-2">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              rows={3}
+              className={`w-full rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 border resize-none ${
+                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+              }`}
+            />
+            {editError && <p className="text-xs text-red-500">{editError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveEdit}
+                disabled={updatePostMutation.isPending || !editContent.trim()}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" /> {updatePostMutation.isPending ? 'Guardando...' : 'Guardar'}
+              </button>
+              <button
+                onClick={() => setIsEditingPost(false)}
+                className={`font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                <X className="w-3.5 h-3.5" /> Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{post.content}</p>
+        )}
 
         {/* SPECIAL RENDER: Match Result Card */}
         {post.type === 'match_result' && post.score && (
@@ -258,37 +354,54 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
             <p className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Sé el primero en comentar.</p>
           )}
           {comments.map((c) => (
-            <div key={c.id} className="flex gap-2.5 items-start text-xs">
+            <div key={c.id} className="flex gap-2.5 items-start text-xs group">
               <img src={c.author_avatar} alt="" className="w-6 h-6 rounded-lg object-cover mt-0.5" />
               <div className={`rounded-xl p-2.5 flex-1 ${isDark ? 'bg-slate-800/60' : 'bg-white border border-slate-200 shadow-sm'}`}>
                 <span className={`font-bold block ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>{c.author_name}</span>
                 <p className={`mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{c.content}</p>
               </div>
+              {c.author_id === user?.id && (
+                <button
+                  onClick={() => handleDeleteComment(c.id)}
+                  disabled={deleteCommentMutation.isPending}
+                  title="Eliminar comentario"
+                  className={`p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-50 ${isDark ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           ))}
 
           {commentError && <p className="text-[11px] text-red-500">{commentError}</p>}
 
-          {/* Add comment form */}
-          <form onSubmit={handleComment} className="flex gap-2 pt-1">
-            <input
-              type="text"
-              placeholder="Escribí un comentario..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              disabled={addCommentMutation.isPending}
-              className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 border disabled:opacity-60 ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
-              }`}
-            />
-            <button
-              type="submit"
-              disabled={!commentText.trim() || addCommentMutation.isPending}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white p-1.5 rounded-xl disabled:opacity-50 transition-all cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+          {/* Add comment form — el club puede haber desactivado comentarios
+              en sus publicaciones (interruptor general, panel del club) */}
+          {commentsAllowed ? (
+            <form onSubmit={handleComment} className="flex gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="Escribí un comentario..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                disabled={addCommentMutation.isPending}
+                className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 border disabled:opacity-60 ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
+                }`}
+              />
+              <button
+                type="submit"
+                disabled={!commentText.trim() || addCommentMutation.isPending}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white p-1.5 rounded-xl disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          ) : (
+            <p className={`flex items-center gap-1.5 text-[11px] pt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <Lock className="w-3 h-3" /> Este club desactivó los comentarios en sus publicaciones.
+            </p>
+          )}
         </div>
       )}
     </div>
