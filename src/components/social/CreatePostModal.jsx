@@ -1,18 +1,28 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { padelService, useCourts } from '@/api/padelService';
-import { Image, Zap, Trophy, X, Send, MapPin } from 'lucide-react';
+import { padelService, useCourts, useUsers } from '@/api/padelService';
+import { Image, Zap, Trophy, X, Send, MapPin, Tag, Search } from 'lucide-react';
 
 export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaultCourtId = null }) {
   const { user } = useAuth();
   const [postType, setPostType] = useState('standard'); // 'standard' | 'open_match' | 'match_result'
   const [content, setContent] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
-  
+
   // Court selection
   const { data: courts = [] } = useCourts();
   const [selectedCourtId, setSelectedCourtId] = useState(defaultCourtId || courts[0]?.id || '');
-  
+
+  // Etiquetar personas — en cualquier tipo de publicación
+  const { data: allUsers = [] } = useUsers();
+  const [taggedUsers, setTaggedUsers] = useState([]);
+  const [tagSearch, setTagSearch] = useState('');
+  const tagResults = tagSearch.trim()
+    ? allUsers.filter(u => u.id !== user?.id && !taggedUsers.some(t => t.id === u.id) && (u.full_name || '').toLowerCase().includes(tagSearch.toLowerCase())).slice(0, 5)
+    : [];
+  const addTag = (u) => { setTaggedUsers(prev => [...prev, u]); setTagSearch(''); };
+  const removeTag = (id) => setTaggedUsers(prev => prev.filter(u => u.id !== id));
+
   // Match Result state
   const [set1, setSet1] = useState('6-3');
   const [set2, setSet2] = useState('6-4');
@@ -51,7 +61,8 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
         category: matchLevel,
         spot_needed: 1,
         price_per_player: `$${matchPrice}`
-      } : null
+      } : null,
+      tagged_user_ids: taggedUsers.map(u => u.id)
     };
 
     setError('');
@@ -60,6 +71,7 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
       await padelService.createPost(postPayload);
       setContent('');
       setMediaUrl('');
+      setTaggedUsers([]);
       onClose();
       if (onPostCreated) onPostCreated();
     } catch (err) {
@@ -130,6 +142,50 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
             }
             className="w-full bg-slate-800/50 border border-slate-700/60 rounded-2xl p-3.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all resize-none"
           />
+
+          {/* Etiquetar personas */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5 text-emerald-400" /> Etiquetar personas (opcional):
+            </label>
+            {taggedUsers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {taggedUsers.map(u => (
+                  <span key={u.id} className="flex items-center gap-1.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold pl-2.5 pr-1.5 py-1 rounded-full">
+                    {u.full_name}
+                    <button type="button" onClick={() => removeTag(u.id)} className="hover:text-white cursor-pointer">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={tagSearch}
+                onChange={(e) => setTagSearch(e.target.value)}
+                placeholder="Buscar jugador por nombre..."
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            {tagResults.length > 0 && (
+              <div className="bg-slate-800/80 border border-slate-700 rounded-xl overflow-hidden">
+                {tagResults.map(u => (
+                  <button
+                    type="button"
+                    key={u.id}
+                    onClick={() => addTag(u)}
+                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700 cursor-pointer"
+                  >
+                    <img src={u.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"} alt="" className="w-6 h-6 rounded-lg object-cover" />
+                    {u.full_name} <span className="text-slate-500">· {u.level}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Court selector */}
           <div className="space-y-1">

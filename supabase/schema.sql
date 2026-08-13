@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  type TEXT NOT NULL, -- 'booking_created' | 'booking_modified' | 'booking_cancelled'
+  type TEXT NOT NULL, -- 'booking_created' | 'booking_modified' | 'booking_cancelled' | 'post_tag'
   title TEXT NOT NULL,
   body TEXT,
   booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
@@ -288,6 +288,49 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_booking_notification(UUID, TEXT, TEXT, TEXT, UUID) TO authenticated;
 
+-- Notifica a un usuario etiquetado en una publicación — solo el autor de esa
+-- publicación puede dispararla, y solo para alguien que de verdad está en
+-- su tagged_user_ids (no sirve para notificar a cualquiera a discreción).
+CREATE OR REPLACE FUNCTION public.create_tag_notification(p_user_id UUID, p_post_id UUID)
+RETURNS public.notifications
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor UUID := auth.uid();
+  v_post public.posts;
+  v_actor_name TEXT;
+  v_row public.notifications;
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Debés iniciar sesión.';
+  END IF;
+
+  SELECT * INTO v_post FROM public.posts WHERE id = p_post_id;
+  IF v_post.id IS NULL OR v_post.author_id <> v_actor THEN
+    RAISE EXCEPTION 'No podés notificar por esta publicación.';
+  END IF;
+  IF NOT (p_user_id = ANY(COALESCE(v_post.tagged_user_ids, '{}'))) THEN
+    RAISE EXCEPTION 'Ese usuario no está etiquetado en esta publicación.';
+  END IF;
+
+  SELECT full_name INTO v_actor_name FROM public.profiles WHERE id = v_actor;
+
+  INSERT INTO public.notifications (user_id, actor_id, type, title, body, post_id)
+  VALUES (
+    p_user_id, v_actor, 'post_tag',
+    COALESCE(v_actor_name, 'Alguien') || ' te etiquetó en una publicación',
+    LEFT(v_post.content, 140),
+    p_post_id
+  )
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_tag_notification(UUID, UUID) TO authenticated;
+
 -- --------------------------------------------------------------------
 -- 6. TABLA DE PUBLICACIONES SOCIALES (posts)
 -- --------------------------------------------------------------------
@@ -311,6 +354,14 @@ CREATE TABLE IF NOT EXISTS public.posts (
 -- el dueño puede corregirla cuando quiera. updated_at deja mostrar "editado"
 -- en la UI, como Facebook.
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+-- Etiquetar usuarios 2026-08-13: en cualquier tipo de publicación.
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS tagged_user_ids UUID[] NOT NULL DEFAULT '{}';
+
+-- Para poder linkear la notificación de "te etiquetaron" de vuelta a la
+-- publicación (posts ya existe acá, a diferencia de donde se define la
+-- tabla notifications más arriba en el archivo).
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS post_id UUID REFERENCES public.posts(id) ON DELETE SET NULL;
 
 -- Comentarios 2026-08-13: el botón de comentar en el feed llamaba a
 -- padelService.addComment, que no existía, ni había tabla — tiraba error y

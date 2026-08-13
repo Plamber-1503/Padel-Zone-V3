@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment } from '@/api/padelService';
+import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment, useUsers } from '@/api/padelService';
 import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2, Pencil, Trash2, X, Check, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -37,6 +37,11 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   // (jugador común) nunca quedan bloqueados.
   const club = post.courts?.clubs || null;
   const commentsAllowed = club ? club.allow_comments !== false : true;
+
+  // Usuarios etiquetados — se resuelven contra el listado público, ya que
+  // tagged_user_ids es solo un array de ids, no viene con nombre/foto.
+  const { data: allUsers = [] } = useUsers();
+  const taggedUsers = (post.tagged_user_ids || []).map(id => allUsers.find(u => u.id === id)).filter(Boolean);
 
   const linkedMatch = post.match_id ? openMatches.find(m => m.id === post.match_id) : null;
   const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
@@ -225,6 +230,18 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
           </div>
         ) : (
           <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{post.content}</p>
+        )}
+
+        {taggedUsers.length > 0 && (
+          <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            Con{' '}
+            {taggedUsers.map((u, i) => (
+              <React.Fragment key={u.id}>
+                <Link to={`/profile/${u.id}`} className="font-semibold text-emerald-500 hover:underline">{u.full_name}</Link>
+                {i < taggedUsers.length - 1 && (i === taggedUsers.length - 2 ? ' y ' : ', ')}
+              </React.Fragment>
+            ))}
+          </p>
         )}
 
         {/* SPECIAL RENDER: Match Result Card */}

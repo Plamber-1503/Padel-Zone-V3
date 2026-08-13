@@ -1052,6 +1052,8 @@ export const padelService = {
       linkedMatchId = newMatch.id;
     }
 
+    const taggedUserIds = postData.tagged_user_ids || [];
+
     const payload = {
       author_id: currentUser.id,
       author_type: postData.author_type || 'user',
@@ -1065,14 +1067,23 @@ export const padelService = {
         ? { ...postData.open_match_details, match_id: linkedMatchId }
         : null,
       match_id: linkedMatchId,
-      likes: []
+      likes: [],
+      tagged_user_ids: taggedUserIds
     };
 
     const { data, error } = await supabase.from('posts').insert(payload).select().single();
-    if (error || !data) {
-      console.warn('Supabase post insert fallback:', error?.message);
-      return { id: `p-${Date.now()}`, ...payload, created_at: new Date().toISOString() };
+    // Auditoría 2026-08-13: antes, si esto fallaba, se devolvía igual un
+    // post "de mentira" armado en el cliente en vez de tirar el error — el
+    // que publica veía "éxito" aunque nada se hubiera guardado de verdad.
+    if (error) throw new Error(`Error al publicar: ${error.message}`);
+
+    // Notificar a cada etiquetado — mejor esfuerzo, no bloquea la publicación
+    // si una notificación puntual falla.
+    for (const userId of taggedUserIds) {
+      const { error: notifyError } = await supabase.rpc('create_tag_notification', { p_user_id: userId, p_post_id: data.id });
+      if (notifyError) console.warn('No se pudo notificar a un usuario etiquetado:', notifyError.message);
     }
+
     return data;
   },
 
