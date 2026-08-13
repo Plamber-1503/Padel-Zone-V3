@@ -136,8 +136,28 @@ export function AuthProvider({ children }) {
     return updated;
   };
 
+  // Auditoría 2026-08-13: TeamPartnerSection llamaba a padelService directo
+  // sin await ni actualizar este contexto — el cambio quedaba en el caché
+  // local (localStorage) pero la sesión en memoria (este `user`) seguía
+  // mostrando la pareja vieja hasta un refresh completo de página, y en ese
+  // refresh tampoco se veía bien porque el nombre/foto/nivel de la pareja
+  // nunca se guardaban en la tabla real (solo el id) — TeamPartnerSection
+  // ahora los resuelve en vivo a partir del id, así que esto ya alcanza con
+  // mantener sincronizado el team_partner_id en el `user` de acá.
+  const setTeamPartner = async (partnerId) => {
+    const updated = await padelService.setTeamPartner(partnerId);
+    setUser(updated);
+    return updated;
+  };
+
+  const removeTeamPartner = async () => {
+    const updated = await padelService.removeTeamPartner();
+    setUser(updated);
+    return updated;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, toggleFollow }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, toggleFollow, setTeamPartner, removeTeamPartner }}>
       {children}
     </AuthContext.Provider>
   );

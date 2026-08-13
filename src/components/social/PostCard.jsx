@@ -75,16 +75,18 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
       {/* Header */}
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img
-            src={post.author_avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
-            alt=""
-            className="w-10 h-10 rounded-xl object-cover border border-slate-300 dark:border-slate-700"
-          />
+          <Link to={`/profile/${post.author_id}`}>
+            <img
+              src={post.author_avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
+              alt=""
+              className="w-10 h-10 rounded-xl object-cover border border-slate-300 dark:border-slate-700"
+            />
+          </Link>
           <div>
             <div className="flex items-center gap-2">
-              <span className={`font-bold text-sm hover:underline cursor-pointer ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <Link to={`/profile/${post.author_id}`} className={`font-bold text-sm hover:underline ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {post.author_name}
-              </span>
+              </Link>
               {post.author_type === 'court' && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border flex items-center gap-1 ${
                   isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -171,7 +173,9 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
                   }`}>
                     {post.open_match_details?.search_type === 'partner' ? '👥 Buscando Pareja' : '⚡ Buscando 4to Jugador'}
                   </span>
-                  <h4 className={`font-bold text-sm mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>Organiza {post.author_name}</h4>
+                  <h4 className={`font-bold text-sm mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Organiza <Link to={`/profile/${post.author_id}`} className="hover:underline text-emerald-500">{post.author_name}</Link>
+                  </h4>
                   <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                     {isFlexible
                       ? 'Fecha y hora a convenir / Partido Abierto'

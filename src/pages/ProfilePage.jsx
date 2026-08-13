@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { padelService, usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability, useCancelOpenMatch } from '@/api/padelService';
+import { usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability, useCancelOpenMatch } from '@/api/padelService';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
@@ -350,9 +350,18 @@ function ProfilePageContent() {
 function TeamPartnerSection({ user, onPartnerUpdated }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { setTeamPartner, removeTeamPartner } = useAuth();
 
   const { data: usersData = [] } = useUsers();
   const allUsers = usersData.filter(u => u && u.id !== user?.id);
+
+  // La pareja se resuelve siempre en vivo a partir de team_partner_id (la
+  // única fuente real, persistida en la base) contra el listado de
+  // usuarios — así nunca se puede ver desactualizada ni "duplicada" entre
+  // sesiones, a diferencia de antes que dependía de nombre/foto/nivel
+  // cacheados que nunca se guardaban en la tabla.
+  const partner = user?.team_partner_id ? allUsers.find(u => u.id === user.team_partner_id) : null;
 
   // Sugeridos por partidos jugados recurrentes
   const suggestedPartners = allUsers.slice(0, 3);
@@ -361,25 +370,31 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
     ? allUsers.filter(u => u && ((u.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.level || '').toLowerCase().includes(searchQuery.toLowerCase())))
     : suggestedPartners;
 
-  const handleSelectPartner = (partnerId) => {
+  const handleSelectPartner = async (partnerId) => {
+    setIsSaving(true);
     try {
-      padelService.setTeamPartner(partnerId);
+      await setTeamPartner(partnerId);
       setIsEditing(false);
       setSearchQuery('');
       if (onPartnerUpdated) onPartnerUpdated();
       alert('¡Pareja de juego vinculada correctamente!');
     } catch (e) {
       alert(e.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleRemovePartner = () => {
+  const handleRemovePartner = async () => {
+    setIsSaving(true);
     try {
-      padelService.removeTeamPartner();
+      await removeTeamPartner();
       if (onPartnerUpdated) onPartnerUpdated();
       alert('Pareja de juego desvinculada');
     } catch (e) {
       alert(e.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -396,7 +411,7 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
           </div>
         </div>
 
-        {user?.team_partner_name && (
+        {partner && (
           <button
             onClick={() => setIsEditing(!isEditing)}
             className="text-xs font-bold text-emerald-400 hover:underline"
@@ -407,26 +422,27 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
       </div>
 
       {/* Si tiene pareja asignada y NO está editando */}
-      {user?.team_partner_name && !isEditing ? (
+      {partner && !isEditing ? (
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <img
-              src={user.team_partner_avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop"}
-              alt={user.team_partner_name}
+              src={partner.avatar_url || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop"}
+              alt={partner.full_name}
               className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-400 shrink-0"
             />
             <div className="min-w-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
                 Pareja Habitual Cargada
               </span>
-              <h4 className="font-bold text-sm text-white truncate mt-0.5">{user.team_partner_name}</h4>
-              <p className="text-xs text-slate-300 truncate">{user.team_partner_level || '4ta Categoría'}</p>
+              <h4 className="font-bold text-sm text-white truncate mt-0.5">{partner.full_name}</h4>
+              <p className="text-xs text-slate-300 truncate">{partner.level || '4ta Categoría'}</p>
             </div>
           </div>
 
           <button
             onClick={handleRemovePartner}
-            className="text-xs font-bold text-slate-400 hover:text-red-400 px-3 py-1.5 rounded-xl border border-slate-700 hover:border-red-500/40 transition-colors shrink-0"
+            disabled={isSaving}
+            className="text-xs font-bold text-slate-400 hover:text-red-400 px-3 py-1.5 rounded-xl border border-slate-700 hover:border-red-500/40 transition-colors shrink-0 disabled:opacity-60"
           >
             Desvincular
           </button>
@@ -459,7 +475,8 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
                     </div>
                     <button
                       onClick={() => handleSelectPartner(u.id)}
-                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] py-1.5 rounded-xl shadow transition-colors"
+                      disabled={isSaving}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] py-1.5 rounded-xl shadow transition-colors disabled:opacity-60"
                     >
                       Vincular Pareja
                     </button>

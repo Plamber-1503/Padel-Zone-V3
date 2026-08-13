@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { padelService, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
@@ -104,11 +104,13 @@ export default function OpenMatchesPage() {
 
                 {/* Datos del Organizador */}
                 <div className="flex items-center gap-3.5">
-                  <img src={m.host_avatar} alt={m.host_name} className="w-12 h-12 rounded-2xl object-cover border-2 border-emerald-500/60 shadow-md shrink-0" />
+                  <Link to={`/profile/${m.host_id}`}>
+                    <img src={m.host_avatar} alt={m.host_name} className="w-12 h-12 rounded-2xl object-cover border-2 border-emerald-500/60 shadow-md shrink-0" />
+                  </Link>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-slate-400 font-medium">Organiza</span>
-                      <h4 className="font-bold text-sm text-white">{m.host_name}</h4>
+                      <Link to={`/profile/${m.host_id}`} className="font-bold text-sm text-white hover:underline hover:text-emerald-400">{m.host_name}</Link>
                     </div>
                     <p className="text-xs text-emerald-400 font-medium">{m.host_level || m.level_required}</p>
                     <p className="text-xs text-slate-300 font-semibold mt-0.5">🏟️ {m.court_name}</p>

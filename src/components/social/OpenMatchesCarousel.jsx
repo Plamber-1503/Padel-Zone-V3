@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useOpenMatches } from '@/api/padelService';
 import { useTheme } from '@/context/ThemeContext';
 import { Zap, Clock, ChevronLeft, ChevronRight, MapPin, CheckCircle2 } from 'lucide-react';
@@ -103,17 +104,22 @@ export default function OpenMatchesCarousel() {
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-3">
-                <img
-                  src={currentMatch.host_avatar}
-                  alt=""
-                  className="w-10 h-10 rounded-xl object-cover border-2 border-emerald-500/50 shadow-md"
-                />
+                <Link to={`/profile/${currentMatch.host_id}`}>
+                  <img
+                    src={currentMatch.host_avatar}
+                    alt=""
+                    className="w-10 h-10 rounded-xl object-cover border-2 border-emerald-500/50 shadow-md"
+                  />
+                </Link>
                 <div>
                   <h4 className={`font-bold text-sm leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     {currentMatch.court_name}
                   </h4>
                   <p className={`text-[11px] flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                    <MapPin className="w-3 h-3 text-emerald-500" /> Organiza <span className={`font-semibold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>{currentMatch.host_name}</span>
+                    <MapPin className="w-3 h-3 text-emerald-500" /> Organiza{' '}
+                    <Link to={`/profile/${currentMatch.host_id}`} className={`font-semibold hover:underline ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                      {currentMatch.host_name}
+                    </Link>
                   </p>
                 </div>
               </div>
