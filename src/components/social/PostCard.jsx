@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useOpenMatches, useJoinOpenMatch } from '@/api/padelService';
+import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment } from '@/api/padelService';
 import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -14,9 +14,11 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   // depender del tema global de la app — si no lo pasan, sigue como antes.
   const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : globalIsDark;
   const [commentText, setCommentText] = useState('');
+  const [commentError, setCommentError] = useState('');
   const [showComments, setShowComments] = useState(false);
   const { data: openMatches = [] } = useOpenMatches();
   const joinMatchMutation = useJoinOpenMatch();
+  const addCommentMutation = useAddComment();
 
   const likes = post.likes || [];
   const isLiked = likes.includes(user?.id);
@@ -48,9 +50,17 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   const handleComment = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    padelService.addComment(post.id, commentText);
-    setCommentText('');
-    if (onPostUpdated) onPostUpdated();
+    setCommentError('');
+    addCommentMutation.mutate(
+      { postId: post.id, text: commentText },
+      {
+        onSuccess: () => {
+          setCommentText('');
+          if (onPostUpdated) onPostUpdated();
+        },
+        onError: (err) => setCommentError(err.message)
+      }
+    );
   };
 
   const formattedDate = post.created_at
@@ -240,15 +250,20 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
       {/* Comments section */}
       {showComments && (
         <div className={`p-4 border-t space-y-3 ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+          {comments.length === 0 && (
+            <p className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Sé el primero en comentar.</p>
+          )}
           {comments.map((c) => (
             <div key={c.id} className="flex gap-2.5 items-start text-xs">
               <img src={c.author_avatar} alt="" className="w-6 h-6 rounded-lg object-cover mt-0.5" />
               <div className={`rounded-xl p-2.5 flex-1 ${isDark ? 'bg-slate-800/60' : 'bg-white border border-slate-200 shadow-sm'}`}>
                 <span className={`font-bold block ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>{c.author_name}</span>
-                <p className={`mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{c.text}</p>
+                <p className={`mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{c.content}</p>
               </div>
             </div>
           ))}
+
+          {commentError && <p className="text-[11px] text-red-500">{commentError}</p>}
 
           {/* Add comment form */}
           <form onSubmit={handleComment} className="flex gap-2 pt-1">
@@ -257,13 +272,14 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
               placeholder="Escribí un comentario..."
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 border ${
+              disabled={addCommentMutation.isPending}
+              className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 border disabled:opacity-60 ${
                 isDark ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
               }`}
             />
             <button
               type="submit"
-              disabled={!commentText.trim()}
+              disabled={!commentText.trim() || addCommentMutation.isPending}
               className="bg-emerald-500 hover:bg-emerald-600 text-white p-1.5 rounded-xl disabled:opacity-50 transition-all cursor-pointer"
             >
               <Send className="w-4 h-4" />

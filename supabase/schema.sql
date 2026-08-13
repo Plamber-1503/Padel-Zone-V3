@@ -303,6 +303,19 @@ CREATE TABLE IF NOT EXISTS public.posts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Comentarios 2026-08-13: el botón de comentar en el feed llamaba a
+-- padelService.addComment, que no existía, ni había tabla — tiraba error y
+-- no guardaba nada (hallazgo QA #10).
+CREATE TABLE IF NOT EXISTS public.comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+  author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  author_name TEXT NOT NULL,
+  author_avatar TEXT,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- --------------------------------------------------------------------
 -- 7. TABLA DE PARTIDOS ABIERTOS (open_matches)
 -- --------------------------------------------------------------------
@@ -772,6 +785,17 @@ CREATE POLICY "Users Delete Own Posts" ON public.posts FOR DELETE USING (auth.ui
 -- tabla (eso hubiera requerido reabrir el UPDATE a cualquier usuario). En su
 -- lugar usa la función public.toggle_post_like (SECURITY DEFINER, más abajo),
 -- que también resuelve la condición de carrera de likes concurrentes.
+
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public Read Comments" ON public.comments;
+CREATE POLICY "Public Read Comments" ON public.comments FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users Create Comments" ON public.comments;
+CREATE POLICY "Users Create Comments" ON public.comments FOR INSERT WITH CHECK (auth.uid() = author_id);
+
+DROP POLICY IF EXISTS "Users Delete Own Comments" ON public.comments;
+CREATE POLICY "Users Delete Own Comments" ON public.comments FOR DELETE USING (auth.uid() = author_id);
 
 DROP POLICY IF EXISTS "Users Register Tournaments" ON public.tournament_registrations;
 DROP POLICY IF EXISTS "Users Read Tournament Registrations" ON public.tournament_registrations;

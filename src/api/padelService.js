@@ -965,7 +965,11 @@ export const padelService = {
 
   // 6. POSTS SOCIALES
   async getPosts(filterTag = 'all') {
-    const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*, comments(*)')
+      .order('created_at', { ascending: false })
+      .order('created_at', { foreignTable: 'comments', ascending: true });
     let posts = data;
     if (error || !data || data.length === 0) {
       posts = INITIAL_POSTS;
@@ -1043,6 +1047,23 @@ export const padelService = {
       console.error('Error al dar me gusta:', error.message);
       throw new Error(`Error al dar me gusta: ${error.message}`);
     }
+    return data;
+  },
+
+  async addComment(postId, text) {
+    const currentUser = this.getCurrentUser();
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        author_id: currentUser.id,
+        author_name: currentUser.full_name,
+        author_avatar: currentUser.avatar_url,
+        content: text
+      })
+      .select()
+      .single();
+    if (error) throw new Error(`Error al comentar: ${error.message}`);
     return data;
   },
 
@@ -1414,6 +1435,16 @@ export function useCreatePost() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] });
       queryClient.invalidateQueries({ queryKey: ['open_matches'] });
+    }
+  });
+}
+
+export function useAddComment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ postId, text }) => padelService.addComment(postId, text),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
     }
   });
 }
