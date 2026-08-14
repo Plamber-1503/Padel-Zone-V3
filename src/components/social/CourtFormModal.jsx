@@ -19,6 +19,9 @@ export default function CourtFormModal({ isDark = true, club, court, onClose, de
   const [name, setName] = useState(court?.name || '');
   const [surface, setSurface] = useState(court?.surface || SURFACE_OPTIONS[0]);
   const [price, setPrice] = useState(court?.price_per_hour || 4800);
+  const [openingTime, setOpeningTime] = useState(court?.opening_time?.slice(0, 5) || '09:00');
+  const [closingTime, setClosingTime] = useState(court?.closing_time?.slice(0, 5) || '22:30');
+  const [slotDuration, setSlotDuration] = useState(court?.slot_duration_minutes || 90);
   const [amenities, setAmenities] = useState(new Set(court?.amenities || []));
   const [photos, setPhotos] = useState(
     (court?.gallery_images?.length ? court.gallery_images : court?.image_url ? [court.image_url] : []).map((url) => ({ url, uploading: false }))
@@ -62,12 +65,19 @@ export default function CourtFormModal({ isDark = true, club, court, onClose, de
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (closingTime <= openingTime) {
+      setError('La hora de cierre tiene que ser posterior a la de apertura.');
+      return;
+    }
     setError('');
     const galleryImages = photos.filter((p) => !p.uploading).map((p) => p.url);
     const payload = {
       name,
       surface,
       price_per_hour: Number(price) || 4500,
+      opening_time: openingTime,
+      closing_time: closingTime,
+      slot_duration_minutes: Number(slotDuration),
       amenities: [...amenities],
       image_url: galleryImages[0] || null,
       gallery_images: galleryImages
@@ -77,7 +87,19 @@ export default function CourtFormModal({ isDark = true, club, court, onClose, de
       updateCourt.mutate({ courtId: court.id, patch: payload }, { onSuccess: onClose, onError: (err) => setError(err.message) });
     } else {
       createCourt.mutate(
-        { clubId: club.id, name, surface, pricePerHour: price, amenities: [...amenities], imageUrl: galleryImages[0], galleryImages, isBookable: defaultBookable },
+        {
+          clubId: club.id,
+          name,
+          surface,
+          pricePerHour: price,
+          openingTime,
+          closingTime,
+          slotDurationMinutes: Number(slotDuration),
+          amenities: [...amenities],
+          imageUrl: galleryImages[0],
+          galleryImages,
+          isBookable: defaultBookable
+        },
         { onSuccess: onClose, onError: (err) => setError(err.message) }
       );
     }
@@ -149,6 +171,27 @@ export default function CourtFormModal({ isDark = true, club, court, onClose, de
                 className={inputCls}
                 required
               />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelCls + ' block'}>Horario y duración de turnos</label>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10.5px] block'}>Abre</span>
+                <input type="time" value={openingTime} onChange={(e) => setOpeningTime(e.target.value)} className={inputCls} required />
+              </div>
+              <div className="space-y-1">
+                <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10.5px] block'}>Cierra</span>
+                <input type="time" value={closingTime} onChange={(e) => setClosingTime(e.target.value)} className={inputCls} required />
+              </div>
+              <div className="space-y-1">
+                <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10.5px] block'}>Duración turno</span>
+                <select value={slotDuration} onChange={(e) => setSlotDuration(e.target.value)} className={inputCls}>
+                  <option value={60}>1 hora</option>
+                  <option value={90}>1:30 hs</option>
+                </select>
+              </div>
             </div>
           </div>
 

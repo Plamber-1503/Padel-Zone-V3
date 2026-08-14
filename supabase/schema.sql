@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS public.courts (
 -- nivel de base de datos también (ver policy más abajo).
 ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS is_bookable BOOLEAN NOT NULL DEFAULT true;
 
+-- Horario y duración de turno configurables por cancha (2026-08-14):
+-- reemplaza la grilla fija 9:00-22:30/90min que antes regía para todas las
+-- canchas de todos los clubes. Los defaults reproducen exactamente ese
+-- horario viejo, así que ninguna cancha existente cambia hasta que su
+-- dueño la configure distinto.
+ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS opening_time TIME NOT NULL DEFAULT '09:00';
+ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS closing_time TIME NOT NULL DEFAULT '22:30';
+ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS slot_duration_minutes SMALLINT NOT NULL DEFAULT 90 CHECK (slot_duration_minutes IN (60, 90));
+
 -- --------------------------------------------------------------------
 -- 4. TABLA DE DISPONIBILIDAD DE CANCHAS (court_availability)
 -- --------------------------------------------------------------------

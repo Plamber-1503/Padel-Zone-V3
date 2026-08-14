@@ -836,7 +836,7 @@ export const padelService = {
     return { club, courts: data || [] };
   },
 
-  async createCourt({ clubId, name, surface, pricePerHour, amenities = [], imageUrl, galleryImages = [], isBookable = true }) {
+  async createCourt({ clubId, name, surface, pricePerHour, openingTime = '09:00', closingTime = '22:30', slotDurationMinutes = 90, amenities = [], imageUrl, galleryImages = [], isBookable = true }) {
     const { data, error } = await supabase
       .from('courts')
       .insert({
@@ -844,6 +844,9 @@ export const padelService = {
         name,
         surface,
         price_per_hour: Number(pricePerHour) || 4500,
+        opening_time: openingTime,
+        closing_time: closingTime,
+        slot_duration_minutes: Number(slotDurationMinutes) || 90,
         amenities,
         image_url: imageUrl || galleryImages[0] || null,
         gallery_images: galleryImages,

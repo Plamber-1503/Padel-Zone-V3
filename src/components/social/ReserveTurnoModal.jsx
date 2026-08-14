@@ -1,25 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCourts, useBookings } from '@/api/padelService';
 import { useBookingModal } from '@/context/BookingModalContext';
 import RecurringBookingModal from './RecurringBookingModal';
 import BookingConfirmModal from './BookingConfirmModal';
+import { generateCourtSlots } from '@/lib/courtSlots';
 import { X, MapPin, CalendarClock, Pencil } from 'lucide-react';
-
-// Horario del club: 9:00 a 23:00, en bloques de 90 minutos (el mismo
-// tamaño de turno que ya se usaba). El armado de horario/duración por
-// club (2026-08-12: pendiente, ver panel de canchas del dueño) va a
-// reemplazar esta grilla fija más adelante.
-const BOOKING_SLOTS = [
-  { start: '09:00', end: '10:30', label: '09:00 - 10:30' },
-  { start: '10:30', end: '12:00', label: '10:30 - 12:00' },
-  { start: '12:00', end: '13:30', label: '12:00 - 13:30' },
-  { start: '13:30', end: '15:00', label: '13:30 - 15:00' },
-  { start: '15:00', end: '16:30', label: '15:00 - 16:30' },
-  { start: '16:30', end: '18:00', label: '16:30 - 18:00' },
-  { start: '18:00', end: '19:30', label: '18:00 - 19:30' },
-  { start: '19:30', end: '21:00', label: '19:30 - 21:00' },
-  { start: '21:00', end: '22:30', label: '21:00 - 22:30' }
-];
 
 const WEEKDAY_LABELS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
@@ -68,6 +53,7 @@ export default function ReserveTurnoModal() {
   const court = allCourts.find((c) => c.id === selectedCourtId);
   const { data: courtBookings = [] } = useBookings(selectedCourtId, selectedDate);
   const takenSlots = courtBookings.map((b) => (b.start_time || '').slice(0, 5));
+  const bookingSlots = useMemo(() => generateCourtSlots(court), [court]);
 
   if (!isOpen) return null;
 
@@ -169,7 +155,7 @@ export default function ReserveTurnoModal() {
               </p>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-              {BOOKING_SLOTS.map((slot) => {
+              {bookingSlots.map((slot) => {
                 const isTaken = takenSlots.includes(slot.start);
                 const isDisabled = isTaken || !selectedCourtId || court?.is_bookable === false;
                 return (
@@ -199,7 +185,7 @@ export default function ReserveTurnoModal() {
           anchorDate={selectedDate}
           initialSlot={recurringSlot}
           today={bookingDays[0].value}
-          slots={BOOKING_SLOTS}
+          slots={bookingSlots}
           onClose={() => setRecurringSlot(null)}
         />
       )}
