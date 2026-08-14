@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { BookingModalProvider } from '@/context/BookingModalContext';
@@ -7,19 +7,35 @@ import { useRequestStaffAccess } from '@/api/padelService';
 import AppLayout from '@/components/layout/AppLayout';
 import { Building2, ShieldCheck, Clock, Mail } from 'lucide-react';
 
-import HomeFeed from '@/pages/HomeFeed';
-import CourtsPage from '@/pages/CourtsPage';
-import CourtProfilePage from '@/pages/CourtProfilePage';
-import OpenMatchesPage from '@/pages/OpenMatchesPage';
-import TournamentsPage from '@/pages/TournamentsPage';
-import ChatPage from '@/pages/ChatPage';
-import ProfilePage from '@/pages/ProfilePage';
-import MyBookingsPage from '@/pages/MyBookingsPage';
-import ClubDashboardPage from '@/pages/ClubDashboardPage';
-import BackofficePage from '@/pages/BackofficePage';
-import LoginPage from '@/pages/LoginPage';
+// Code-splitting por ruta 2026-08-13: antes toda la app (todas las páginas,
+// leaflet, framer-motion, etc.) viajaba en un solo bundle inicial de
+// ~900KB. Con React.lazy, cada página se descarga recién cuando el usuario
+// navega a ella — el bundle inicial (login + shell) queda mucho más chico.
+const HomeFeed = lazy(() => import('@/pages/HomeFeed'));
+const CourtsPage = lazy(() => import('@/pages/CourtsPage'));
+const CourtProfilePage = lazy(() => import('@/pages/CourtProfilePage'));
+const OpenMatchesPage = lazy(() => import('@/pages/OpenMatchesPage'));
+const TournamentsPage = lazy(() => import('@/pages/TournamentsPage'));
+const ChatPage = lazy(() => import('@/pages/ChatPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const MyBookingsPage = lazy(() => import('@/pages/MyBookingsPage'));
+const ClubDashboardPage = lazy(() => import('@/pages/ClubDashboardPage'));
+const BackofficePage = lazy(() => import('@/pages/BackofficePage'));
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
 
 const POST_LOGIN_REDIRECT_KEY = 'pz3_post_login_redirect';
+
+// Se muestra un instante mientras se descarga el código de la página a la
+// que se navegó — mismo estilo visual que la pantalla de "Iniciando
+// sesión..." de ProtectedRoute, para que no se sienta como un estado
+// distinto.
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+      <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -175,6 +191,7 @@ export default function App() {
   return (
     <AuthProvider>
       <Router>
+        <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -207,6 +224,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </Router>
     </AuthProvider>
   );
