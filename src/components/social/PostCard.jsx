@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment, useUsers } from '@/api/padelService';
+import { toast, confirmToast } from '@/lib/toast';
 import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2, Pencil, Trash2, X, Check, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -62,7 +63,7 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
       await joinMatchMutation.mutateAsync(post.match_id);
       if (onPostUpdated) onPostUpdated();
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -98,18 +99,20 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   };
 
   const handleDeletePost = () => {
-    if (!window.confirm('¿Eliminar esta publicación? No se puede deshacer.')) return;
-    deletePostMutation.mutate(post.id, {
-      onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
-      onError: (err) => alert(err.message)
+    confirmToast('¿Eliminar esta publicación? No se puede deshacer.', () => {
+      deletePostMutation.mutate(post.id, {
+        onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
+        onError: (err) => toast.error(err.message)
+      });
     });
   };
 
   const handleDeleteComment = (commentId) => {
-    if (!window.confirm('¿Eliminar este comentario?')) return;
-    deleteCommentMutation.mutate(commentId, {
-      onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
-      onError: (err) => alert(err.message)
+    confirmToast('¿Eliminar este comentario?', () => {
+      deleteCommentMutation.mutate(commentId, {
+        onSuccess: () => { if (onPostUpdated) onPostUpdated(); },
+        onError: (err) => toast.error(err.message)
+      });
     });
   };
 

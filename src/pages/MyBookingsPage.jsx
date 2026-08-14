@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMyBookings, useCancelBooking } from '@/api/padelService';
 import { useBookingModal } from '@/context/BookingModalContext';
+import { confirmToast } from '@/lib/toast';
 import { CalendarClock, MapPin, Repeat, User, XCircle, Pencil, Loader2, MessageCircle, X } from 'lucide-react';
 
 function formatDate(iso) {
@@ -41,9 +42,10 @@ export default function MyBookingsPage() {
     if (group.items.length > 1) {
       // Modificar toda la serie: la cancelamos y abrimos el popup de reserva
       // recurrente, ya anclado a esta misma cancha, para armar una nueva.
-      if (!window.confirm('Esto va a cancelar toda la serie actual para que armes una nueva. ¿Continuar?')) return;
-      cancelBooking.mutate({ booking: group, scope: 'series' }, {
-        onSuccess: () => openBookingModal({ courtId: group.court_id, isRecurring: true })
+      confirmToast('Esto va a cancelar toda la serie actual para que armes una nueva. ¿Continuar?', () => {
+        cancelBooking.mutate({ booking: group, scope: 'series' }, {
+          onSuccess: () => openBookingModal({ courtId: group.court_id, isRecurring: true })
+        });
       });
     } else {
       openBookingModal({ courtId: group.court_id, modifyBooking: group });

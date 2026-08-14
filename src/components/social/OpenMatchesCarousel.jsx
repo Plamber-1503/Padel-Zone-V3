@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useOpenMatches } from '@/api/padelService';
 import { useTheme } from '@/context/ThemeContext';
+import { toast } from '@/lib/toast';
 import { Zap, Clock, ChevronLeft, ChevronRight, MapPin, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -163,7 +164,7 @@ export default function OpenMatchesCarousel() {
               </div>
 
               <button
-                onClick={() => alert(`Te has sumado al partido en ${currentMatch.court_name}`)}
+                onClick={() => toast.success(`Te has sumado al partido en ${currentMatch.court_name}`)}
                 className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4.5 py-2 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
               >
                 Sumarme al Partido

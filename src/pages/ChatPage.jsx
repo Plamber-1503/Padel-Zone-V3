@@ -3,6 +3,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { padelService } from '@/api/padelService';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { toast } from '@/lib/toast';
 import { Send, MessageCircle, Search, ArrowLeft, User, ShieldCheck, Check, CheckCheck } from 'lucide-react';
 
 export default function ChatPage() {
@@ -147,7 +148,7 @@ export default function ChatPage() {
         });
       }
     } catch (err) {
-      alert(`Error al enviar: ${err.message}`);
+      toast.error(`Error al enviar: ${err.message}`);
     } finally {
       setLoading(false);
     }

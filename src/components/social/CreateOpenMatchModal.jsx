@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCourts, useBookings, useCreateOpenMatch, useUpdateOpenMatch } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from '@/lib/toast';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated, editMatch }) {
@@ -88,8 +89,9 @@ export default function CreateOpenMatchModal({ isOpen, onClose, onMatchCreated, 
 
       if (onMatchCreated) onMatchCreated(resultMatch);
       onClose();
+      toast.success(isEditMode ? 'Búsqueda actualizada' : '¡Búsqueda publicada!');
     } catch (err) {
-      alert(err.message || 'Error al guardar la búsqueda de partido');
+      toast.error(err.message || 'Error al guardar la búsqueda de partido');
     }
   };
 

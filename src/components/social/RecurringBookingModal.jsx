@@ -3,6 +3,7 @@ import { X, Repeat, CalendarCheck, CalendarX, Sparkles, Loader2, MessageCircle }
 import { useCourtBookingsInRange, useCreateBooking, useCreateRecurringBooking } from '@/api/padelService';
 import { addDays, analyzeRecurringOptions, findFreeSingleSlots, weekdayLabel } from '@/lib/recurringAvailability';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from '@/lib/toast';
 import GuestPicker from './GuestPicker';
 
 const WINDOW_DAYS = 30;
@@ -60,7 +61,7 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
         externalGuestLinks: data?.external_guest_links || []
       });
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -76,7 +77,7 @@ export default function RecurringBookingModal({ onClose, court, anchorDate, init
       });
       setResult({ dates: [opt.date], slot: opt.slot, count: 1, single: true, externalGuestLinks: data?.external_guest_links || [] });
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 

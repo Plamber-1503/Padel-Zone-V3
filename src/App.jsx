@@ -1,6 +1,8 @@
 import React, { useState, Suspense, lazy } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { BookingModalProvider } from '@/context/BookingModalContext';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useRequestStaffAccess } from '@/api/padelService';
@@ -184,12 +186,15 @@ function ConfigMissingScreen() {
 }
 
 export default function App() {
+  const { isDark } = useTheme();
+
   if (!isSupabaseConfigured) {
     return <ConfigMissingScreen />;
   }
 
   return (
     <AuthProvider>
+      <Toaster theme={isDark ? 'dark' : 'light'} position="top-center" richColors closeButton />
       <Router>
         <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>

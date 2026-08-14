@@ -1,6 +1,7 @@
 import React from 'react';
 import { padelService, useTournaments } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from '@/lib/toast';
 import { Trophy, Calendar, MapPin, Award, Users, CheckCircle2 } from 'lucide-react';
 
 export default function TournamentsPage() {
@@ -11,8 +12,9 @@ export default function TournamentsPage() {
     try {
       await padelService.registerForTournament(tournamentId);
       refetch();
+      toast.success('¡Inscripción confirmada!');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 

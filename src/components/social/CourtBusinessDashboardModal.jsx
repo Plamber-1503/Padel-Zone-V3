@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from '@/lib/toast';
 import { X, TrendingUp, DollarSign, Clock, Trophy, Users, ShieldCheck, AlertTriangle, Lock, Calendar, BarChart3, ChevronRight, CheckCircle, Sparkles } from 'lucide-react';
 
 export default function CourtBusinessDashboardModal({ isOpen, onClose, court }) {
@@ -242,19 +243,19 @@ export default function CourtBusinessDashboardModal({ isOpen, onClose, court }) 
 
           <div className="flex flex-wrap gap-2 text-xs">
             <button
-              onClick={() => alert('Función: Bloquear horario por mantenimiento o clases particulares.')}
+              onClick={() => toast.info('Función: Bloquear horario por mantenimiento o clases particulares.', { description: 'Próximamente' })}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl border border-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5 text-amber-400" /> Bloquear Turno (Mantenimiento / Clases)
             </button>
             <button
-              onClick={() => alert('Función: Ajustar precios por hora pico/valle.')}
+              onClick={() => toast.info('Función: Ajustar precios por hora pico/valle.', { description: 'Próximamente' })}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl border border-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Modificar Tarifas (Pico / Valle)
             </button>
             <button
-              onClick={() => alert('Función: Enviar aviso promocional masivo a seguidores del club.')}
+              onClick={() => toast.info('Función: Enviar aviso promocional masivo a seguidores del club.', { description: 'Próximamente' })}
               className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 px-4 py-2 rounded-xl border border-emerald-500/40 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" /> Crear Promoción "Last Minute"

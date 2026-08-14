@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { usePosts, useOpenMatches, useAvailabilities, useUsers, useRemoveAvailability, useCancelOpenMatch } from '@/api/padelService';
+import { toast, confirmToast } from '@/lib/toast';
 import PostCard from '@/components/social/PostCard';
 import SetAvailabilityModal from '@/components/social/SetAvailabilityModal';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
@@ -48,24 +49,26 @@ function ProfilePageContent() {
   const removeAvailabilityMutation = useRemoveAvailability();
   const cancelMatchMutation = useCancelOpenMatch();
 
-  const handleRemoveAvailability = async () => {
-    if (window.confirm('¿Deseas quitar tu estado de disponibilidad para jugar?')) {
+  const handleRemoveAvailability = () => {
+    confirmToast('¿Deseas quitar tu estado de disponibilidad para jugar?', async () => {
       try {
         await removeAvailabilityMutation.mutateAsync();
+        toast.success('Disponibilidad quitada');
       } catch (err) {
-        alert(err.message || 'Error al quitar la disponibilidad');
+        toast.error(err.message || 'Error al quitar la disponibilidad');
       }
-    }
+    });
   };
 
-  const handleCancelMatch = async (matchId) => {
-    if (window.confirm('¿Deseas cerrar esta búsqueda de partido? Ya no será visible para otros jugadores.')) {
+  const handleCancelMatch = (matchId) => {
+    confirmToast('¿Deseas cerrar esta búsqueda de partido? Ya no será visible para otros jugadores.', async () => {
       try {
         await cancelMatchMutation.mutateAsync(matchId);
+        toast.success('Búsqueda cerrada');
       } catch (err) {
-        alert(err.message || 'Error al cerrar la búsqueda');
+        toast.error(err.message || 'Error al cerrar la búsqueda');
       }
-    }
+    });
   };
 
   return (
@@ -377,9 +380,9 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
       setIsEditing(false);
       setSearchQuery('');
       if (onPartnerUpdated) onPartnerUpdated();
-      alert('¡Pareja de juego vinculada correctamente!');
+      toast.success('¡Pareja de juego vinculada correctamente!');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setIsSaving(false);
     }
@@ -390,9 +393,9 @@ function TeamPartnerSection({ user, onPartnerUpdated }) {
     try {
       await removeTeamPartner();
       if (onPartnerUpdated) onPartnerUpdated();
-      alert('Pareja de juego desvinculada');
+      toast.success('Pareja de juego desvinculada');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setIsSaving(false);
     }

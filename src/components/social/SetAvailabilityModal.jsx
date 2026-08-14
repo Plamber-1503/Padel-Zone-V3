@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCourts, useSetAvailability } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from '@/lib/toast';
 import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, UserCheck } from 'lucide-react';
 
 export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySaved, initialData }) {
@@ -46,8 +47,9 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
 
       if (onAvailabilitySaved) onAvailabilitySaved(result);
       onClose();
+      toast.success('Disponibilidad publicada');
     } catch (err) {
-      alert(err.message || 'Error al guardar la disponibilidad');
+      toast.error(err.message || 'Error al guardar la disponibilidad');
     }
   };
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { padelService, useOpenMatches, useAvailabilities, useUsers } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from '@/lib/toast';
 import CreateOpenMatchModal from '@/components/social/CreateOpenMatchModal';
 import AvailablePlayersModal from '@/components/social/AvailablePlayersModal';
 import { Zap, Clock, MapPin, Users, PlusCircle, CheckCircle2, MessageCircle, UserCheck } from 'lucide-react';
@@ -19,7 +20,7 @@ export default function OpenMatchesPage() {
 
   const handleSumarme = (match) => {
     if (match.host_id === user?.id || match.host_name === user?.full_name) {
-      alert('Esta búsqueda fue creada por ti.');
+      toast.info('Esta búsqueda fue creada por ti.');
       return;
     }
 
@@ -35,7 +36,7 @@ export default function OpenMatchesPage() {
 
     const hostUser = match.host_id ? { id: match.host_id } : usersList.find(u => u.full_name === match.host_name);
     if (!hostUser) {
-      alert('No pudimos identificar quién organiza este partido — probá de nuevo más tarde.');
+      toast.error('No pudimos identificar quién organiza este partido — probá de nuevo más tarde.');
       return;
     }
     navigate(`/chat?user=${hostUser.id}&msg=${encodeURIComponent(defaultMsg)}`);
