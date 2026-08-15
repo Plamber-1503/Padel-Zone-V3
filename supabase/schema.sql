@@ -340,6 +340,55 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_tag_notification(UUID, UUID) TO authenticated;
 
+-- Notifica al autor de una publicación cuando alguien la comenta (2026-08-15).
+-- Reemplaza el aviso que antes se armaba al vuelo en el cliente mirando
+-- posts.comments — nunca quedaba guardado en ningún lado, así que el ícono
+-- de "notificaciones nuevas" nunca se enteraba de un comentario. Solo el
+-- autor del comentario puede dispararla (valida que p_comment_id sea suyo),
+-- y no se autonotifica si comenta su propia publicación.
+CREATE OR REPLACE FUNCTION public.create_comment_notification(p_post_id UUID, p_comment_id UUID)
+RETURNS public.notifications
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor UUID := auth.uid();
+  v_post public.posts;
+  v_comment public.comments;
+  v_actor_name TEXT;
+  v_row public.notifications;
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Debés iniciar sesión.';
+  END IF;
+
+  SELECT * INTO v_comment FROM public.comments WHERE id = p_comment_id AND post_id = p_post_id;
+  IF v_comment.id IS NULL OR v_comment.author_id <> v_actor THEN
+    RAISE EXCEPTION 'Ese comentario no existe o no es tuyo.';
+  END IF;
+
+  SELECT * INTO v_post FROM public.posts WHERE id = p_post_id;
+  IF v_post.id IS NULL OR v_post.author_id = v_actor THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT full_name INTO v_actor_name FROM public.profiles WHERE id = v_actor;
+
+  INSERT INTO public.notifications (user_id, actor_id, type, title, body, post_id)
+  VALUES (
+    v_post.author_id, v_actor, 'post_comment',
+    COALESCE(v_actor_name, 'Alguien') || ' comentó tu publicación',
+    LEFT(v_comment.content, 140),
+    p_post_id
+  )
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_comment_notification(UUID, UUID) TO authenticated;
+
 -- --------------------------------------------------------------------
 -- 6. TABLA DE PUBLICACIONES SOCIALES (posts)
 -- --------------------------------------------------------------------

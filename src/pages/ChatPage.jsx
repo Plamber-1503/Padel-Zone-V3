@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { padelService } from '@/api/padelService';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { toast } from '@/lib/toast';
-import { Send, MessageCircle, Search, ArrowLeft, User, ShieldCheck, Check, CheckCheck } from 'lucide-react';
+import { Send, MessageCircle, Search, ArrowLeft, Check, CheckCheck } from 'lucide-react';
+
+const cx = (isDark, dark, light) => (isDark ? dark : light);
 
 export default function ChatPage() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const location = useLocation();
   const [allUsers, setAllUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -168,16 +172,16 @@ export default function ChatPage() {
     : allUsers;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-[calc(100vh-8.5rem)] flex flex-col md:flex-row">
-      
+    <div className={cx(isDark, 'bg-slate-900 border-slate-800', 'bg-white border-slate-200') + ' border rounded-3xl overflow-hidden shadow-lg h-[calc(100vh-8.5rem)] flex flex-col md:flex-row'}>
+
       {/* ── SIDEBAR DE CONVERSACIONES & BÚSQUEDA ───────────────────────── */}
       <div
-        className={`w-full md:w-80 border-r border-slate-800 p-4 space-y-3 flex flex-col ${
+        className={`w-full md:w-80 border-r p-4 space-y-3 flex-col ${cx(isDark, 'border-slate-800', 'border-slate-200')} ${
           showMobileList ? 'flex' : 'hidden md:flex'
         }`}
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-2">
+          <h3 className={cx(isDark, 'text-slate-300', 'text-slate-500') + ' font-bold text-xs uppercase tracking-wider flex items-center gap-2'}>
             <MessageCircle className="w-4 h-4 text-emerald-400" />
             Conversaciones ({allUsers.length})
           </h3>
@@ -185,13 +189,13 @@ export default function ChatPage() {
 
         {/* Buscador de usuarios */}
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className={cx(isDark, 'text-slate-400', 'text-slate-400') + ' w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2'} />
           <input
             type="text"
             placeholder="Buscar jugador..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700/80 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            className={cx(isDark, 'bg-slate-800 border-slate-700/80 text-white', 'bg-slate-100 border-slate-300 text-slate-900') + ' w-full border rounded-xl pl-8 pr-3 py-2 text-xs placeholder-slate-400 focus:outline-none focus:border-emerald-500'}
           />
         </div>
 
@@ -211,7 +215,7 @@ export default function ChatPage() {
                   className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
                     isSelected
                       ? 'bg-emerald-500/15 border border-emerald-500/40'
-                      : 'hover:bg-slate-800/60 border border-transparent'
+                      : cx(isDark, 'hover:bg-slate-800/60 border border-transparent', 'hover:bg-slate-100 border border-transparent')
                   }`}
                 >
                   <Link
@@ -222,15 +226,15 @@ export default function ChatPage() {
                     <img
                       src={u.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
                       alt=""
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-700 hover:opacity-80 transition-opacity"
+                      className={cx(isDark, 'border-slate-700', 'border-slate-300') + ' w-10 h-10 rounded-xl object-cover border hover:opacity-80 transition-opacity'}
                     />
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 absolute -bottom-0.5 -right-0.5" />
+                    <span className={cx(isDark, 'border-slate-900', 'border-white') + ' w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 absolute -bottom-0.5 -right-0.5'} />
                   </Link>
                   <div className="min-w-0 flex-1">
-                    <p className={`font-bold text-xs truncate ${isSelected ? 'text-emerald-400' : 'text-white'}`}>
+                    <p className={`font-bold text-xs truncate ${isSelected ? 'text-emerald-400' : cx(isDark, 'text-white', 'text-slate-900')}`}>
                       {u.full_name}
                     </p>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                    <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10px] truncate mt-0.5'}>
                       {u.level || 'Jugador PadelZone'}
                     </p>
                   </div>
@@ -243,18 +247,18 @@ export default function ChatPage() {
 
       {/* ── VENTANA PRINCIPAL DE CHAT ──────────────────────────────────── */}
       <div
-        className={`flex-1 flex-col justify-between p-4 bg-[#090f1b] ${
+        className={`flex-1 flex-col justify-between p-4 ${cx(isDark, 'bg-[#090f1b]', 'bg-slate-50')} ${
           !showMobileList ? 'flex' : 'hidden md:flex'
         }`}
       >
         {/* Chat header */}
         {selectedUser ? (
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className={cx(isDark, 'border-slate-800', 'border-slate-200') + ' flex items-center justify-between pb-3 border-b'}>
             <div className="flex items-center gap-3">
               {/* Botón Volver a Lista en vista Móvil */}
               <button
                 onClick={() => setShowMobileList(true)}
-                className="md:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
+                className={cx(isDark, 'bg-slate-800 text-slate-300 hover:text-white', 'bg-slate-100 text-slate-600 hover:text-slate-900') + ' md:hidden p-2 rounded-xl'}
                 title="Volver a lista"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -264,20 +268,20 @@ export default function ChatPage() {
                 <img
                   src={selectedUser.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
                   alt=""
-                  className="w-10 h-10 rounded-xl object-cover border border-slate-700 hover:opacity-80 transition-opacity"
+                  className={cx(isDark, 'border-slate-700', 'border-slate-300') + ' w-10 h-10 rounded-xl object-cover border hover:opacity-80 transition-opacity'}
                 />
               </Link>
               <Link to={`/profile/${selectedUser.id}`}>
-                <p className="font-bold text-sm text-white flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
+                <p className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-sm flex items-center gap-1.5 hover:text-emerald-400 transition-colors'}>
                   {selectedUser.full_name}
                 </p>
-                <p className="text-[10px] text-emerald-400 font-semibold">{selectedUser.level || 'Jugador PadelZone'}</p>
+                <p className="text-[10px] text-emerald-500 font-semibold">{selectedUser.level || 'Jugador PadelZone'}</p>
               </Link>
             </div>
           </div>
         ) : (
-          <div className="pb-3 border-b border-slate-800">
-            <p className="text-xs text-slate-400">Seleccioná un usuario para chatear</p>
+          <div className={cx(isDark, 'border-slate-800', 'border-slate-200') + ' pb-3 border-b'}>
+            <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs'}>Seleccioná un usuario para chatear</p>
           </div>
         )}
 
@@ -285,11 +289,11 @@ export default function ChatPage() {
         <div className="flex-1 py-4 space-y-3 overflow-y-auto pr-1">
           {messages.length === 0 && selectedUser && (
             <div className="text-center pt-16 space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/60 mx-auto flex items-center justify-center text-slate-400">
+              <div className={cx(isDark, 'bg-slate-800/80 border-slate-700/60', 'bg-slate-100 border-slate-200') + ' w-12 h-12 rounded-2xl border mx-auto flex items-center justify-center'}>
                 <MessageCircle className="w-6 h-6 text-emerald-400" />
               </div>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Sin mensajes previos con <strong className="text-white">{selectedUser.full_name}</strong>.<br />
+              <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs max-w-sm mx-auto'}>
+                Sin mensajes previos con <strong className={cx(isDark, 'text-white', 'text-slate-900')}>{selectedUser.full_name}</strong>.<br />
                 ¡Escribile un mensaje para coordinar tu partido!
               </p>
             </div>
@@ -306,12 +310,12 @@ export default function ChatPage() {
                   className={`max-w-[85%] sm:max-w-md rounded-2xl p-3 text-xs leading-relaxed shadow-md ${
                     isMine
                       ? 'bg-emerald-500 text-slate-950 font-medium rounded-tr-none'
-                      : 'bg-slate-800 text-slate-100 border border-slate-700/60 rounded-tl-none'
+                      : cx(isDark, 'bg-slate-800 text-slate-100 border border-slate-700/60', 'bg-slate-100 text-slate-800 border border-slate-200') + ' rounded-tl-none'
                   }`}
                 >
                   {m.text}
                 </div>
-                <span className="text-[9px] text-slate-400 mt-1 px-1 flex items-center gap-1">
+                <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[9px] mt-1 px-1 flex items-center gap-1'}>
                   {isMine ? 'Vos' : (selectedUser?.full_name || 'Remitente')}
                   {isMine && (
                     m.is_read ? (
@@ -328,14 +332,14 @@ export default function ChatPage() {
         </div>
 
         {/* Formulario de envío */}
-        <form onSubmit={handleSend} className="flex gap-2 pt-3 border-t border-slate-800">
+        <form onSubmit={handleSend} className={cx(isDark, 'border-slate-800', 'border-slate-200') + ' flex gap-2 pt-3 border-t'}>
           <input
             type="text"
             placeholder={selectedUser ? `Enviar mensaje a ${selectedUser.full_name}...` : 'Escribí un mensaje...'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={!selectedUser || loading}
-            className="flex-1 bg-slate-800 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+            className={cx(isDark, 'bg-slate-800 border-slate-700/80 text-white', 'bg-white border-slate-300 text-slate-900') + ' flex-1 border rounded-xl px-4 py-2.5 text-xs placeholder-slate-400 focus:outline-none focus:border-emerald-500 disabled:opacity-50'}
           />
           <button
             type="submit"

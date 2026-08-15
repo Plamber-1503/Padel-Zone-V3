@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useCourts, useOpenMatches, usePosts, useTournaments, useUsers, useUpcomingBooking, useMyNotifications, useMarkNotificationRead } from '@/api/padelService';
+import { padelService, useCourts, useOpenMatches, useTournaments, useUsers, useUpcomingBooking, useMyNotifications, useMarkNotificationRead, useUnreadMessagesCount } from '@/api/padelService';
 import Logo from '@/components/ui/Logo';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import ClubApplicationModal from '@/components/social/ClubApplicationModal';
@@ -43,11 +43,11 @@ export default function AppLayout() {
   const { data: courts = [] } = useCourts();
   const { data: upcomingBooking = null } = useUpcomingBooking();
   const { data: openMatchesData = [] } = useOpenMatches();
-  const { data: postsData = [] } = usePosts();
   const { data: tournamentsData = [] } = useTournaments();
   const { data: usersData = [] } = useUsers();
   const { data: realNotifications = [] } = useMyNotifications();
   const markNotificationRead = useMarkNotificationRead();
+  const { data: unreadMessagesCount = 0 } = useUnreadMessagesCount();
 
   const openMatches = openMatchesData.slice(0, 2);
 
@@ -57,14 +57,17 @@ export default function AppLayout() {
     realNotifications.filter((n) => !n.is_read).forEach((n) => markNotificationRead.mutate(n.id));
   };
 
-  // Notificaciones reales (reservas creadas/modificadas/canceladas por tu
-  // pareja) primero, después las generadas a partir de datos ya cargados:
-  // partidos abiertos con cupo disponible + comentarios recientes.
+  // Notificaciones reales (reservas, comentarios, etiquetados — todas
+  // persistidas en public.notifications) primero, después las generadas a
+  // partir de datos ya cargados: partidos abiertos con cupo disponible.
+  // 2026-08-15: sacamos el aviso de "te comentaron" armado al vuelo desde
+  // postsData — ahora ese aviso es real (create_comment_notification) y
+  // llega por realNotifications, con is_read de verdad.
   const notifications = [
     ...realNotifications.map((n) => ({
       id: n.id,
-      icon: CalendarClock,
-      color: n.type === 'booking_cancelled' ? 'amber' : 'emerald',
+      icon: n.type === 'post_comment' || n.type === 'post_tag' ? Trophy : CalendarClock,
+      color: n.type === 'booking_cancelled' ? 'amber' : n.type === 'post_comment' || n.type === 'post_tag' ? 'amber' : 'emerald',
       title: n.title,
       subtitle: n.body
     })),
@@ -77,16 +80,6 @@ export default function AppLayout() {
         color: 'emerald',
         title: `¡Buscan jugadores en ${m.court_name}!`,
         subtitle: `${m.date} ${m.time} • ${m.level_required}`
-      })),
-    ...postsData
-      .filter(p => p.author_id === user?.id && (p.comments?.length || 0) > 0)
-      .slice(0, 1)
-      .map(p => ({
-        id: `notif-comment-${p.id}`,
-        icon: Trophy,
-        color: 'amber',
-        title: `${p.comments[p.comments.length - 1].author_name} comentó tu publicación`,
-        subtitle: `"${p.comments[p.comments.length - 1].text}"`
       }))
   ];
   const tournaments = tournamentsData.slice(0, 2);
@@ -222,7 +215,9 @@ export default function AppLayout() {
               className="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700/50 transition-all relative"
             >
               <MessageCircle className="w-4 h-4" />
-              <span className="w-2 h-2 rounded-full bg-emerald-400 absolute top-2.5 right-2.5" />
+              {unreadMessagesCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 absolute top-2.5 right-2.5 animate-pulse" />
+              )}
             </Link>
 
             {/* User Profile avatar dropdown */}

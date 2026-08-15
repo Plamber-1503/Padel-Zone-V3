@@ -1040,7 +1040,11 @@ export const padelService = {
   },
 
   async createPost(postData) {
-    const currentUser = this.getCurrentUser();
+    // getCurrentAuthUser(), no getCurrentUser(): mismo motivo que en
+    // addComment — el post debe quedar firmado con la sesión real, no con
+    // lo último que haya quedado cacheado en localStorage.
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) throw new Error('Debés iniciar sesión para publicar');
 
     let linkedMatchId = null;
     if (postData.type === 'open_match' && postData.open_match_details) {
@@ -1103,7 +1107,14 @@ export const padelService = {
   },
 
   async addComment(postId, text) {
-    const currentUser = this.getCurrentUser();
+    // getCurrentAuthUser() en vez de getCurrentUser(): este último lee el
+    // perfil cacheado en localStorage, que puede haber quedado pisado por
+    // la sesión de otra cuenta en el mismo navegador — el comentario
+    // quedaría firmado con la identidad equivocada aunque la sesión real
+    // sea la correcta (auditoría 2026-08-15).
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) throw new Error('Debés iniciar sesión para comentar');
+
     const { data, error } = await supabase
       .from('comments')
       .insert({
@@ -1116,6 +1127,10 @@ export const padelService = {
       .select()
       .single();
     if (error) throw new Error(`Error al comentar: ${error.message}`);
+
+    const { error: notifyError } = await supabase.rpc('create_comment_notification', { p_post_id: postId, p_comment_id: data.id });
+    if (notifyError) console.warn('No se pudo notificar el comentario:', notifyError.message);
+
     return data;
   },
 
@@ -1307,6 +1322,23 @@ export const padelService = {
       .eq('is_read', false);
 
     if (error) console.warn('Error al marcar mensajes como leídos:', error.message);
+  },
+
+  async getUnreadMessagesCount() {
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) return 0;
+
+    const { count, error } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('receiver_id', currentUser.id)
+      .eq('is_read', false);
+
+    if (error) {
+      console.warn('Error al contar mensajes sin leer:', error.message);
+      return 0;
+    }
+    return count || 0;
   }
 };
 
@@ -1477,6 +1509,14 @@ export function useMarkNotificationRead() {
   return useMutation({
     mutationFn: (id) => padelService.markNotificationRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my_notifications'] })
+  });
+}
+
+export function useUnreadMessagesCount() {
+  return useQuery({
+    queryKey: ['unread_messages_count'],
+    queryFn: () => padelService.getUnreadMessagesCount(),
+    refetchInterval: 30000
   });
 }
 
