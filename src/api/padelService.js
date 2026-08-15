@@ -973,8 +973,20 @@ export const padelService = {
       .select('*, comments(*), courts(club_id, clubs(owner_id, is_virtual, allow_comments))')
       .order('created_at', { ascending: false })
       .order('created_at', { foreignTable: 'comments', ascending: true });
+
+    // Auditoría 2026-08-15: un error acá (ej. un hiccup de red) caía en
+    // silencio a INITIAL_POSTS (posts de mentira armados en el cliente) —
+    // el feed "seguía andando" pero un like recién dado por otro usuario
+    // podía desaparecer de la pantalla en el siguiente refetch, porque los
+    // posts fake nunca lo tenían. Si Supabase está configurado, un error
+    // real ahora se propaga (React Query reintenta solo) en vez de taparse
+    // con datos falsos; la demo sin Supabase configurado sigue igual.
+    if (error && isSupabaseConfigured) {
+      throw new Error(`Error al cargar publicaciones: ${error.message}`);
+    }
+
     let posts = data;
-    if (error || !data || data.length === 0) {
+    if (!data || data.length === 0) {
       posts = INITIAL_POSTS;
     }
 
