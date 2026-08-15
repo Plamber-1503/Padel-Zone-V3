@@ -5,6 +5,17 @@ import { Plus, X, ImagePlus, Loader2 } from 'lucide-react';
 
 const cx = (isDark, dark, light) => (isDark ? dark : light);
 
+// El <input type="time"> nativo no permite elegir 24:00 (medianoche) — su
+// máximo es 23:59 — así que el horario de cierre usa un select propio con
+// esa opción explícita. Postgres sí acepta '24:00:00' como valor de `time`.
+const CLOSING_TIME_OPTIONS = Array.from({ length: 49 }, (_, i) => {
+  const totalMinutes = i * 30;
+  const h = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+  const m = String(totalMinutes % 60).padStart(2, '0');
+  const value = `${h}:${m}`;
+  return { value, label: value === '24:00' ? '24:00 (medianoche)' : value };
+});
+
 // Modal compartido para "Agregar cancha" (court=null) y "Editar cancha"
 // (court=objeto existente) — fotos reales a Supabase Storage y
 // diferenciales guardados en courts.amenities. Lo usan tanto el panel del
@@ -183,7 +194,9 @@ export default function CourtFormModal({ isDark = true, club, court, onClose, de
               </div>
               <div className="space-y-1">
                 <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10.5px] block'}>Cierra</span>
-                <input type="time" value={closingTime} onChange={(e) => setClosingTime(e.target.value)} className={inputCls} required />
+                <select value={closingTime} onChange={(e) => setClosingTime(e.target.value)} className={inputCls} required>
+                  {CLOSING_TIME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
               <div className="space-y-1">
                 <span className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-[10.5px] block'}>Duración turno</span>
