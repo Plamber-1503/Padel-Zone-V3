@@ -24,6 +24,7 @@ const MyBookingsPage = lazy(() => import('@/pages/MyBookingsPage'));
 const ClubDashboardPage = lazy(() => import('@/pages/ClubDashboardPage'));
 const BackofficePage = lazy(() => import('@/pages/BackofficePage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
 
 const POST_LOGIN_REDIRECT_KEY = 'pz3_post_login_redirect';
 
@@ -199,6 +200,7 @@ export default function App() {
         <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
           {/* Panel privado — sin link visible en el sitio, se accede tipeando la URL */}
           <Route

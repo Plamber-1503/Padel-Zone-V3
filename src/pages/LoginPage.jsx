@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Mail, Lock, Sparkles } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
@@ -201,6 +202,10 @@ export default function LoginPage() {
             Iniciar Sesión con Email
           </button>
         </form>
+
+        <p className="text-center text-[10px] text-slate-600">
+          <Link to="/privacy" className="hover:text-slate-400 transition-colors">Política de Privacidad</Link>
+        </p>
 
       </div>
     </div>
