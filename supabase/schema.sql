@@ -831,6 +831,33 @@ CREATE POLICY "Staff Manage Virtual Club Photos" ON storage.objects
     AND EXISTS (SELECT 1 FROM public.clubs WHERE clubs.id::text = (storage.foldername(name))[1] AND clubs.is_virtual = true)
   );
 
+-- Fotos de publicaciones del feed (Supabase Storage) 2026-08-18: bucket
+-- separado de 'court-photos' porque ese está restringido a dueños de club —
+-- acá cualquier jugador autenticado puede subir, pero solo a su propia
+-- carpeta ('{user_id}/{archivo}'), verificado contra auth.uid() en vez de
+-- contra clubs.owner_id.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('post-photos', 'post-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Public Read Post Photos" ON storage.objects;
+CREATE POLICY "Public Read Post Photos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'post-photos');
+
+DROP POLICY IF EXISTS "Users Upload Own Post Photos" ON storage.objects;
+CREATE POLICY "Users Upload Own Post Photos" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'post-photos'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+DROP POLICY IF EXISTS "Users Delete Own Post Photos" ON storage.objects;
+CREATE POLICY "Users Delete Own Post Photos" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'post-photos'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
 DROP POLICY IF EXISTS "Public Read Court Availability" ON public.court_availability;
 CREATE POLICY "Public Read Court Availability" ON public.court_availability FOR SELECT USING (true);
 

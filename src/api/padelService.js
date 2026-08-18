@@ -915,6 +915,21 @@ export const padelService = {
     return data.publicUrl;
   },
 
+  // Sube una foto al bucket 'post-photos' para una publicación del feed —
+  // separado de 'court-photos' porque ese bucket solo admite subidas del
+  // dueño del club; acá cualquier jugador autenticado puede subir a su
+  // propia carpeta ({user_id}/...).
+  async uploadPostPhoto(file) {
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) throw new Error('Debés iniciar sesión para subir una foto');
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from('post-photos').upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(`Error al subir la foto: ${error.message}`);
+    const { data } = supabase.storage.from('post-photos').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
   // Métricas reales del club (reemplaza los literales fijos "$1.480.000",
   // "94%", etc. que mostraba el panel B2B) — calculadas a partir de las
   // reservas confirmadas del mes en curso sobre las canchas del club.
@@ -1743,6 +1758,12 @@ export function useCourtsForClub(clubId) {
 export function useUploadCourtPhoto() {
   return useMutation({
     mutationFn: ({ clubId, file }) => padelService.uploadCourtPhoto(clubId, file)
+  });
+}
+
+export function useUploadPostPhoto() {
+  return useMutation({
+    mutationFn: (file) => padelService.uploadPostPhoto(file)
   });
 }
 

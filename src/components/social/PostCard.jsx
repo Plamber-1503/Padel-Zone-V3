@@ -331,8 +331,8 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
 
         {/* Media Image if available */}
         {post.media_url && (
-          <div className="rounded-xl overflow-hidden max-h-96 border border-slate-200 dark:border-slate-800">
-            <img src={post.media_url} alt="" className="w-full object-cover" />
+          <div className="rounded-xl overflow-hidden aspect-[4/3] border border-slate-200 dark:border-slate-800">
+            <img src={post.media_url} alt="" className="w-full h-full object-cover" />
           </div>
         )}
       </div>

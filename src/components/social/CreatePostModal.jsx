@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { padelService, useCourts, useUsers } from '@/api/padelService';
-import { Image, Zap, Trophy, X, Send, MapPin, Tag, Search } from 'lucide-react';
+import { padelService, useCourts, useUsers, useUploadPostPhoto } from '@/api/padelService';
+import { Image, ImagePlus, Loader2, Zap, Trophy, X, Send, MapPin, Tag, Search } from 'lucide-react';
 
 export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaultCourtId = null }) {
   const { user } = useAuth();
   const [postType, setPostType] = useState('standard'); // 'standard' | 'open_match' | 'match_result'
   const [content, setContent] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const uploadPhoto = useUploadPostPhoto();
 
   // Court selection
   const { data: courts = [] } = useCourts();
@@ -22,6 +25,28 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
     : [];
   const addTag = (u) => { setTaggedUsers(prev => [...prev, u]); setTagSearch(''); };
   const removeTag = (id) => setTaggedUsers(prev => prev.filter(u => u.id !== id));
+
+  const handlePhotoSelect = (fileList) => {
+    const file = fileList?.[0];
+    if (!file) return;
+    setUploadError('');
+    const localUrl = URL.createObjectURL(file);
+    setPhotoPreview(localUrl);
+    uploadPhoto.mutate(file, {
+      onSuccess: (publicUrl) => setMediaUrl(publicUrl),
+      onError: (err) => {
+        setPhotoPreview('');
+        setMediaUrl('');
+        setUploadError(err.message);
+      }
+    });
+  };
+
+  const removePhoto = () => {
+    setPhotoPreview('');
+    setMediaUrl('');
+    setUploadError('');
+  };
 
   // Match Result state
   const [set1, setSet1] = useState('6-3');
@@ -71,6 +96,7 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
       await padelService.createPost(postPayload);
       setContent('');
       setMediaUrl('');
+      setPhotoPreview('');
       setTaggedUsers([]);
       onClose();
       if (onPostCreated) onPostCreated();
@@ -203,19 +229,30 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
             </select>
           </div>
 
-          {/* Image URL Optional */}
+          {/* Foto (Opcional) */}
           {postType === 'standard' && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Image className="w-3.5 h-3.5 text-emerald-400" /> URL de Imagen (Opcional):
+                <Image className="w-3.5 h-3.5 text-emerald-400" /> Foto (Opcional):
               </label>
-              <input
-                type="text"
-                placeholder="https://images.unsplash.com/..."
-                value={mediaUrl}
-                onChange={(e) => setMediaUrl(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
+              {photoPreview ? (
+                <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-700 shrink-0">
+                  <img src={photoPreview} alt="" className={`w-full h-full object-cover ${uploadPhoto.isPending ? 'opacity-40' : ''}`} />
+                  {uploadPhoto.isPending && <Loader2 className="w-5 h-5 text-white animate-spin absolute inset-0 m-auto" />}
+                  {!uploadPhoto.isPending && (
+                    <button type="button" onClick={removePhoto} className="absolute top-1 right-1 bg-slate-950/80 rounded-full p-0.5 cursor-pointer">
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-700 hover:border-emerald-500/60 bg-slate-900/60 rounded-xl p-4 cursor-pointer transition-colors">
+                  <ImagePlus className="w-5 h-5 text-slate-500" />
+                  <span className="text-xs font-bold text-slate-300">Hacé click para elegir una foto</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(e.target.files)} />
+                </label>
+              )}
+              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
             </div>
           )}
 
@@ -273,11 +310,11 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated, defaul
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || uploadPhoto.isPending}
               className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{isSubmitting ? 'Publicando...' : 'Publicar'}</span>
+              <span>{isSubmitting ? 'Publicando...' : uploadPhoto.isPending ? 'Subiendo foto...' : 'Publicar'}</span>
             </button>
           </div>
         </form>
