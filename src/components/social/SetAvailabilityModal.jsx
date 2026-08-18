@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useCourts, useSetAvailability } from '@/api/padelService';
+import { useCourts, useSetAvailability, useRemoveAvailability } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
-import { toast } from '@/lib/toast';
-import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, UserCheck } from 'lucide-react';
+import { toast, confirmToast } from '@/lib/toast';
+import { X, Calendar, Clock, MapPin, Users, Zap, CheckCircle2, UserCheck, UserX } from 'lucide-react';
 
 export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySaved, initialData }) {
   const { user } = useAuth();
   const { data: courts = [] } = useCourts();
   const setAvailabilityMutation = useSetAvailability();
+  const removeAvailabilityMutation = useRemoveAvailability();
 
   const [availabilityType, setAvailabilityType] = useState(initialData?.availability_type || 'partner'); // 'partner' | 'any'
   const [courtId, setCourtId] = useState(initialData?.court_id || courts[0]?.id || '');
@@ -51,6 +52,19 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
     } catch (err) {
       toast.error(err.message || 'Error al guardar la disponibilidad');
     }
+  };
+
+  const handleRemove = () => {
+    confirmToast('¿Deseas quitar tu estado de disponibilidad para jugar?', async () => {
+      try {
+        await removeAvailabilityMutation.mutateAsync();
+        if (onAvailabilitySaved) onAvailabilitySaved(null);
+        onClose();
+        toast.success('Disponibilidad quitada');
+      } catch (err) {
+        toast.error(err.message || 'Error al quitar la disponibilidad');
+      }
+    });
   };
 
   return (
@@ -220,21 +234,35 @@ export default function SetAvailabilityModal({ isOpen, onClose, onAvailabilitySa
           </div>
 
           {/* Action buttons */}
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={setAvailabilityMutation.isPending}
-              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
-            >
-              {setAvailabilityMutation.isPending ? 'Guardando...' : 'Guardar Disponibilidad'}
-            </button>
+          <div className="pt-3 flex items-center justify-between gap-3 border-t border-slate-800">
+            {initialData ? (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={removeAvailabilityMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+              >
+                <UserX className="w-3.5 h-3.5" />
+                {removeAvailabilityMutation.isPending ? 'Quitando...' : 'No disponible'}
+              </button>
+            ) : <span />}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={setAvailabilityMutation.isPending}
+                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              >
+                {setAvailabilityMutation.isPending ? 'Guardando...' : 'Guardar Disponibilidad'}
+              </button>
+            </div>
           </div>
 
         </form>
