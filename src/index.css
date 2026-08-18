@@ -195,24 +195,17 @@ html.light .bg-emerald-500:hover {
   color: #ffffff !important;
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Barras de scroll ocultas 2026-08-18: el contenido sigue siendo
+   desplazable (con mouse/trackpad/touch), solo se esconde la barra visual —
+   pedido explícito para las barras laterales (sidebars) y las horizontales
+   (tabs de filtro, selector de días). */
+html {
+  overflow-x: hidden;
 }
-::-webkit-scrollbar-track {
-  background: #0a1128;
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-html.light ::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-::-webkit-scrollbar-thumb {
-  background: #1d2d59;
-  border-radius: 9999px;
-}
-html.light ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #00f5d4;
+*::-webkit-scrollbar {
+  display: none;
 }
