@@ -140,65 +140,22 @@ function ProfilePageContent() {
         </div>
 
         {/* Stats bar */}
-        <div className="grid grid-cols-4 gap-2.5 pt-4 border-t border-slate-800 text-center">
-          <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-            <p className="font-black text-lg text-emerald-400">{user?.matches_played || 34}</p>
-            <p className="text-[10px] text-slate-400 font-medium uppercase">Partidos</p>
+        <div className="flex flex-wrap gap-1.5 pt-4 border-t border-slate-800">
+          <div className="flex items-center gap-1.5 bg-slate-800/50 py-1.5 px-2.5 rounded-md border border-slate-700/50">
+            <span className="font-black text-xs text-emerald-400">{user?.matches_played || 34}</span>
+            <span className="text-[9px] text-slate-400 font-medium uppercase whitespace-nowrap">Partidos</span>
           </div>
-          <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-            <p className="font-black text-lg text-amber-400">{user?.matches_won || 22}</p>
-            <p className="text-[10px] text-slate-400 font-medium uppercase">Victorias</p>
+          <div className="flex items-center gap-1.5 bg-slate-800/50 py-1.5 px-2.5 rounded-md border border-slate-700/50">
+            <span className="font-black text-xs text-amber-400">{user?.matches_won || 22}</span>
+            <span className="text-[9px] text-slate-400 font-medium uppercase whitespace-nowrap">Victorias</span>
           </div>
-          <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-            <p className="font-black text-lg text-emerald-300">{(((user?.matches_won || 22) / (user?.matches_played || 34)) * 100).toFixed(0)}%</p>
-            <p className="text-[10px] text-slate-400 font-medium uppercase">Efectividad</p>
+          <div className="flex items-center gap-1.5 bg-slate-800/50 py-1.5 px-2.5 rounded-md border border-slate-700/50">
+            <span className="font-black text-xs text-emerald-300">{(((user?.matches_won || 22) / (user?.matches_played || 34)) * 100).toFixed(0)}%</span>
+            <span className="text-[9px] text-slate-400 font-medium uppercase whitespace-nowrap">Efectividad</span>
           </div>
-          <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-            <p className="font-black text-lg text-white">{user?.followers_count || 89}</p>
-            <p className="text-[10px] text-slate-400 font-medium uppercase">Seguidores</p>
-          </div>
-        </div>
-
-        {/* ── EQUIPAMIENTO & ESTILO DE JUEGO ──────────────────────────── */}
-        <div className="pt-3 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-          <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-2">
-            <span className="text-base">🏓</span>
-            <div>
-              <span className="text-slate-400 text-[10px]">Pala actual:</span>
-              <p className="font-bold text-white truncate">{user?.racket || 'Babolat Technical Viper'}</p>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-2">
-            <span className="text-base">🖐️</span>
-            <div>
-              <span className="text-slate-400 text-[10px]">Lado preferido:</span>
-              <p className="font-bold text-emerald-400">{user?.side || 'Revés (Izquierda)'}</p>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-2">
-            <span className="text-base">💥</span>
-            <div>
-              <span className="text-slate-400 text-[10px]">Golpe favorito:</span>
-              <p className="font-bold text-amber-400">{user?.best_shot || 'Bajada de Pared'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── BADGES & LOGROS DESBLOQUEADOS (GAMIFICACIÓN) ─────────────── */}
-        <div className="pt-3 border-t border-slate-800 space-y-2">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Logros y Badges del Jugador:</p>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
-              🏆 Rey del Tiebreak <span className="text-[10px] bg-amber-500/20 px-1.5 rounded">Nivel 2</span>
-            </span>
-            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
-              ⚡ Incondicional del Padel <span className="text-[10px] bg-emerald-500/20 px-1.5 rounded">10+ Partidos</span>
-            </span>
-            <span className="bg-sky-500/10 text-sky-400 border border-sky-500/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
-              👥 Pareja de Oro <span className="text-[10px] bg-sky-500/20 px-1.5 rounded">Sofía R.</span>
-            </span>
+          <div className="flex items-center gap-1.5 bg-slate-800/50 py-1.5 px-2.5 rounded-md border border-slate-700/50">
+            <span className="font-black text-xs text-white">{user?.followers_count || 89}</span>
+            <span className="text-[9px] text-slate-400 font-medium uppercase whitespace-nowrap">Seguidores</span>
           </div>
         </div>
       </div>
