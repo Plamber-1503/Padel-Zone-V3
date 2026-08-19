@@ -417,8 +417,7 @@ export default function AppLayout() {
         <aside className="hidden xl:flex flex-col w-72 shrink-0 space-y-6 sticky top-20 h-[calc(100vh-6rem)] overflow-y-auto pr-1">
           
           {/* Próxima Reserva Real del Usuario */}
-          <div className="bg-[#0d1322]/85 backdrop-blur-xl border border-emerald-500/30 rounded-2xl p-4 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
+          <div className="bg-[#0d1322]/85 backdrop-blur-xl border border-emerald-500/30 rounded-2xl p-4 shadow-xl relative">
             <div className="flex items-center gap-2 mb-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
               <Clock className="w-4 h-4 animate-pulse" /> Próxima Reserva
             </div>
@@ -461,10 +460,10 @@ export default function AppLayout() {
             <div className="space-y-2.5">
               {openMatches.map(m => (
                 <div key={m.id} className="p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl space-y-2">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-bold text-white">{m.court_name}</span>
-                    <span className="text-[10px] font-bold bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-400/20">
-                      Falta 1
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-xs font-bold text-white truncate">{m.court_name}</span>
+                    <span className="text-[10px] font-bold bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-400/20 whitespace-nowrap shrink-0">
+                      Falta {m.max_players - (m.joined_players?.length || 0)}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300">{m.date} • {m.time}</p>

@@ -515,15 +515,26 @@ export const padelService = {
   },
 
   async getUpcomingBookingForCurrentUser() {
-    const currentUser = this.getCurrentUser();
+    // getCurrentAuthUser(), no getCurrentUser(): mismo motivo que en
+    // addComment/createPost — evita usar un usuario viejo cacheado en
+    // localStorage (de otra cuenta probada en el mismo navegador) para
+    // esta consulta puntual.
+    const currentUser = await this.getCurrentAuthUser();
+    if (!currentUser?.id) return null;
     // Se trae el nombre de la cancha vía join — la tabla bookings solo
     // guarda court_id, no lo tenía denormalizado.
+    // Auditoría 2026-08-19: antes ordenaba por fecha DESC sin filtrar por
+    // hoy ni por status — podía devolver una reserva ya pasada o cancelada
+    // y mostrarla en "Próxima Reserva" como si fuera válida.
+    const today = new Date().toISOString().split('T')[0];
     const { data, error } = await supabase
       .from('bookings')
       .select('*, courts(name)')
       .eq('user_id', currentUser.id)
-      .order('date', { ascending: false })
-      .order('start_time', { ascending: false })
+      .neq('status', 'cancelled')
+      .gte('date', today)
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true })
       .limit(1);
 
     if (error || !data || data.length === 0) return null;
@@ -1162,20 +1173,33 @@ export const padelService = {
   },
 
   // 7. OPEN MATCHES & MATCH PLAYERS
+  // host_name/host_avatar nunca fueron columnas reales de open_matches (solo
+  // existían en los datos de prueba viejos) — createOpenMatch solo guarda
+  // host_id, así que había que resolver el nombre/foto del organizador
+  // contra profiles. Se aplanan acá para no tener que tocar los 3 lugares
+  // que ya leen match.host_name / match.host_avatar (auditoría 2026-08-18).
   async getOpenMatches() {
-    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').eq('status', 'open').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('open_matches')
+      .select('*, match_players(*), host:profiles!host_id(full_name, avatar_url)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
     if (error || !data || data.length === 0) {
       return INITIAL_OPEN_MATCHES;
     }
-    return data;
+    return data.map((m) => ({ ...m, host_name: m.host_name || m.host?.full_name, host_avatar: m.host_avatar || m.host?.avatar_url }));
   },
 
   async getOpenMatchById(id) {
-    const { data, error } = await supabase.from('open_matches').select('*, match_players(*)').eq('id', id).maybeSingle();
+    const { data, error } = await supabase
+      .from('open_matches')
+      .select('*, match_players(*), host:profiles!host_id(full_name, avatar_url)')
+      .eq('id', id)
+      .maybeSingle();
     if (error || !data) {
       return INITIAL_OPEN_MATCHES.find(m => m.id === id) || INITIAL_OPEN_MATCHES[0];
     }
-    return data;
+    return { ...data, host_name: data.host_name || data.host?.full_name, host_avatar: data.host_avatar || data.host?.avatar_url };
   },
 
   async createOpenMatch(matchData) {
