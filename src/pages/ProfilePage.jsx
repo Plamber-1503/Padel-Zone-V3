@@ -76,8 +76,8 @@ function ProfilePageContent() {
       
       {/* Profile Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-5 text-center sm:text-left">
-          <div className="flex flex-col sm:flex-row items-center gap-5">
+        <div className="flex flex-col sm:flex-row flex-wrap items-center justify-between gap-5 text-center sm:text-left">
+          <div className="flex flex-col sm:flex-row items-center gap-5 min-w-0">
             <img
               src={user?.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
               alt=""
