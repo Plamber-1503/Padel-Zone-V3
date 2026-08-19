@@ -165,7 +165,7 @@ export default function OpenMatchesCarousel() {
 
               <button
                 onClick={() => toast.success(`Te has sumado al partido en ${currentMatch.court_name}`)}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4.5 py-2 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer"
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4.5 py-2 rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 cursor-pointer mr-1.5"
               >
                 Sumarme al Partido
               </button>
