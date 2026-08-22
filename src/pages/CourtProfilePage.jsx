@@ -1,29 +1,57 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useCourt, useCourts, usePosts } from '@/api/padelService';
 import { useAuth } from '@/context/AuthContext';
 import { useBookingModal } from '@/context/BookingModalContext';
 import PostCard from '@/components/social/PostCard';
 import CreatePostModal from '@/components/social/CreatePostModal';
 import CourtBusinessDashboardModal from '@/components/social/CourtBusinessDashboardModal';
-import { MapPin, Star, MessageSquare, ShieldCheck, Plus, Building2 } from 'lucide-react';
+import { MapPin, Star, MessageSquare, ShieldCheck, Plus, Building2, Loader2 } from 'lucide-react';
 
 export default function CourtProfilePage() {
   const { id } = useParams();
   const { user, toggleFollow } = useAuth();
   const { open: openBookingModal } = useBookingModal();
-  const { data: courtDetail } = useCourt(id);
-  const { data: allCourts = [] } = useCourts();
-  const court = courtDetail || allCourts.find(c => c.id === id) || allCourts[0] || { id, name: 'Cancha', rating: 4.8 };
+  const { data: courtDetail, isLoading: isLoadingCourt } = useCourt(id);
+  const { data: allCourts = [], isLoading: isLoadingCourts } = useCourts();
+  // Auditoría 2026-08-19: acá había un `|| allCourts[0]` que, ante un id
+  // inexistente, mostraba OTRA cancha — con su precio y su botón de
+  // reservar — como si fuera la pedida.
+  const court = courtDetail || allCourts.find(c => c.id === id) || null;
 
   const [activeTab, setActiveTab] = useState('feed');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
-  const isFollowingClub = user?.following_ids?.includes(court.id);
+  const isFollowingClub = user?.following_ids?.includes(court?.id);
 
   const { data: allPosts = [], refetch: reloadPosts } = usePosts('all');
-  const courtPosts = allPosts.filter(p => p.court_id === court.id);
+  const courtPosts = allPosts.filter(p => p.court_id === court?.id);
+
+  if (!court) {
+    if (isLoadingCourt || isLoadingCourts) {
+      return (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-6 h-6 text-emerald-400 animate-spin" />
+        </div>
+      );
+    }
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-3">
+        <Building2 className="w-10 h-10 text-slate-600 mx-auto" />
+        <h1 className="font-bold text-xl text-white">Esta cancha no existe</h1>
+        <p className="text-sm text-slate-400">
+          Puede que la hayan dado de baja o que el enlace esté mal.
+        </p>
+        <Link
+          to="/"
+          className="inline-block bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Volver al inicio
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -80,7 +80,8 @@ export const padelService = {
   // Nadie necesita ver el email de otro usuario para usar la app.
   async getUsers() {
     const { data, error } = await supabase.from('profiles_public').select('*');
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar jugadores: ${error.message}`);
+    if (!data || data.length === 0) {
       return INITIAL_USERS;
     }
     return data;
@@ -90,7 +91,8 @@ export const padelService = {
   // tu propia fila acá, así que no debe usarse para consultar a otro usuario.
   async getUserById(id) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
-    if (error || !data) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar el perfil: ${error.message}`);
+    if (!data) {
       return INITIAL_USERS.find(u => u.id === id) || null;
     }
     return data;
@@ -100,7 +102,8 @@ export const padelService = {
   // otro jugador o elegir compañero de equipo.
   async getPublicUserById(id) {
     const { data, error } = await supabase.from('profiles_public').select('*').eq('id', id).maybeSingle();
-    if (error || !data) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar el perfil: ${error.message}`);
+    if (!data) {
       return INITIAL_USERS.find(u => u.id === id) || null;
     }
     return data;
@@ -206,7 +209,8 @@ export const padelService = {
   // RLS ya filtra: acá solo llegan clubes 'approved', más el propio si sos el dueño.
   async getClubs() {
     const { data, error } = await supabase.from('clubs').select('*');
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar los clubes: ${error.message}`);
+    if (!data || data.length === 0) {
       return [
         { id: 'cl-1', name: 'PadelClub Norte', city: 'Buenos Aires', address: 'Av. Libertador 1250' },
         { id: 'cl-2', name: 'Palermo Paddle Club', city: 'Buenos Aires', address: 'Thames 1825' }
@@ -415,7 +419,8 @@ export const padelService = {
   // 3. COURTS (Canchas de Pádel)
   async getCourts() {
     const { data, error } = await supabase.from('courts').select('*, clubs(*)');
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar las canchas: ${error.message}`);
+    if (!data || data.length === 0) {
       return INITIAL_COURTS;
     }
     return data;
@@ -423,8 +428,12 @@ export const padelService = {
 
   async getCourtById(id) {
     const { data, error } = await supabase.from('courts').select('*, clubs(*)').eq('id', id).maybeSingle();
-    if (error || !data) {
-      return INITIAL_COURTS.find(c => c.id === id) || INITIAL_COURTS[0];
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar la cancha: ${error.message}`);
+    if (!data) {
+      // Auditoría 2026-08-19: antes, una cancha inexistente caía a
+      // INITIAL_COURTS[0] — mostraba OTRA cancha (con su precio y horarios)
+      // como si fuera la pedida, en vez de decir que no existe.
+      return INITIAL_COURTS.find(c => c.id === id) || null;
     }
     return data;
   },
@@ -432,7 +441,8 @@ export const padelService = {
   // 4. COURT AVAILABILITY (Disponibilidad Horaria de Canchas)
   async getAvailabilities() {
     const { data, error } = await supabase.from('player_availability').select('*').order('created_at', { ascending: false });
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar las disponibilidades: ${error.message}`);
+    if (!data || data.length === 0) {
       return INITIAL_AVAILABILITIES;
     }
     return data;
@@ -440,7 +450,8 @@ export const padelService = {
 
   async getUserAvailability(userId) {
     const { data, error } = await supabase.from('player_availability').select('*').eq('user_id', userId).maybeSingle();
-    if (error || !data) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar la disponibilidad: ${error.message}`);
+    if (!data) {
       return INITIAL_AVAILABILITIES.find(a => a.user_id === userId) || null;
     }
     return data;
@@ -576,11 +587,15 @@ export const padelService = {
       .single();
 
     if (error) {
+      // El código y el mensaje crudos van a la consola (sirven para
+      // diagnosticar), pero al jugador se le muestra algo entendible: este
+      // choque pasa en uso normal cuando dos personas eligen el mismo turno
+      // con segundos de diferencia, no es un fallo del sistema.
       console.error('⚠️ Supabase Booking Error Code:', error.code, error.message);
       if (error.code === '23505' || error.message?.includes('unique_court_booking') || error.details?.includes('already exists')) {
-        throw new Error('RESTRICCIÓN BD (23505): Esta cancha ya tiene un turno reservado para esa fecha y hora.');
+        throw new Error('Ese turno acaba de ser reservado por otro jugador. Elegí otro horario.');
       }
-      throw new Error(`Error de base de datos (${error.code || 'DB_ERR'}): ${error.message}`);
+      throw new Error('No pudimos confirmar la reserva. Volvé a intentar en un momento.');
     }
 
     await this._notifyBookingParticipants(data, 'booking_created', `${currentUser.full_name} reservó una cancha`,
@@ -1070,7 +1085,8 @@ export const padelService = {
 
   async getCourtFeed(courtId) {
     const { data, error } = await supabase.from('posts').select('*').eq('court_id', courtId);
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar las publicaciones de la cancha: ${error.message}`);
+    if (!data || data.length === 0) {
       const all = await this.getPosts('all');
       return all.filter(p => p.court_id === courtId);
     }
@@ -1184,7 +1200,8 @@ export const padelService = {
       .select('*, match_players(*), host:profiles!host_id(full_name, avatar_url)')
       .eq('status', 'open')
       .order('created_at', { ascending: false });
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar los partidos abiertos: ${error.message}`);
+    if (!data || data.length === 0) {
       return INITIAL_OPEN_MATCHES;
     }
     return data.map((m) => ({ ...m, host_name: m.host_name || m.host?.full_name, host_avatar: m.host_avatar || m.host?.avatar_url }));
@@ -1196,8 +1213,11 @@ export const padelService = {
       .select('*, match_players(*), host:profiles!host_id(full_name, avatar_url)')
       .eq('id', id)
       .maybeSingle();
-    if (error || !data) {
-      return INITIAL_OPEN_MATCHES.find(m => m.id === id) || INITIAL_OPEN_MATCHES[0];
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar el partido: ${error.message}`);
+    if (!data) {
+      // Mismo caso que getCourtById: un partido inexistente devolvía OTRO
+      // partido en vez de indicar que no existe.
+      return INITIAL_OPEN_MATCHES.find(m => m.id === id) || null;
     }
     return { ...data, host_name: data.host_name || data.host?.full_name, host_avatar: data.host_avatar || data.host?.avatar_url };
   },
@@ -1285,7 +1305,8 @@ export const padelService = {
   // 8. TOURNAMENTS & TOURNAMENT REGISTRATIONS
   async getTournaments() {
     const { data, error } = await supabase.from('tournaments').select('*, tournament_registrations(*)');
-    if (error || !data || data.length === 0) {
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar los torneos: ${error.message}`);
+    if (!data || data.length === 0) {
       return INITIAL_TOURNAMENTS;
     }
     return data;
