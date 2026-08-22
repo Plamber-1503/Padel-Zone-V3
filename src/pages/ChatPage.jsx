@@ -35,7 +35,7 @@ export default function ChatPage() {
   useEffect(() => {
     async function loadUsers() {
       const usersList = await padelService.getUsers();
-      const filtered = usersList.filter(u => u.id !== user?.id);
+      const filtered = usersList.filter(u => u.id !== user?.id && u.is_visible !== false);
       setAllUsers(filtered);
 
       let targetUser = null;

@@ -890,6 +890,65 @@ export const padelService = {
     return data;
   },
 
+  // ── USUARIOS DEMO ──────────────────────────────────────────────────
+  // Jugadores de exhibición para que el feed no se vea vacío. Publicar o
+  // comentar en su nombre pasa siempre por funciones server-side que
+  // verifican que el destinatario sea realmente un usuario demo.
+  async getDemoUsers() {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, level, bio, avatar_url, is_demo, is_visible, matches_played, matches_won, elo_rating')
+      .eq('is_demo', true)
+      .order('full_name', { ascending: true });
+    if (error) throw new Error(`Error al leer los usuarios demo: ${error.message}`);
+    return data || [];
+  },
+
+  async setProfileDemo(userId, isDemo) {
+    const { data, error } = await supabase.rpc('set_profile_demo', { p_user_id: userId, p_is_demo: isDemo });
+    if (error) throw new Error(`Error al marcar el usuario: ${error.message}`);
+    return data;
+  },
+
+  async setDemoUserVisible(userId, isVisible) {
+    const { data, error } = await supabase.rpc('set_demo_profile_visible', { p_user_id: userId, p_is_visible: isVisible });
+    if (error) throw new Error(`Error al actualizar el usuario: ${error.message}`);
+    return data;
+  },
+
+  async updateDemoProfile({ userId, fullName, level, bio, avatarUrl }) {
+    const { data, error } = await supabase.rpc('update_demo_profile', {
+      p_user_id: userId,
+      p_full_name: fullName,
+      p_level: level || null,
+      p_bio: bio || null,
+      p_avatar_url: avatarUrl || null
+    });
+    if (error) throw new Error(`Error al guardar el perfil: ${error.message}`);
+    return data;
+  },
+
+  async createDemoPost({ authorId, content, mediaUrl, courtId }) {
+    const { data, error } = await supabase.rpc('create_demo_post', {
+      p_author_id: authorId,
+      p_content: content,
+      p_media_url: mediaUrl || null,
+      p_court_id: courtId || null
+    });
+    if (error) throw new Error(`Error al publicar: ${error.message}`);
+    return data;
+  },
+
+  async createDemoComment({ authorId, postId, content }) {
+    const { data, error } = await supabase.rpc('create_demo_comment', {
+      p_author_id: authorId,
+      p_post_id: postId,
+      p_content: content
+    });
+    if (error) throw new Error(`Error al comentar: ${error.message}`);
+    return data;
+  },
+
   async getClubById(id) {
     const { data, error } = await supabase.from('clubs').select('*').eq('id', id).maybeSingle();
     if (error && isSupabaseConfigured) throw new Error(`Error al cargar el club: ${error.message}`);
@@ -1787,6 +1846,46 @@ export function useRequestClubMembership() {
 }
 
 // ── Panel de dueño de club: inventario de canchas y métricas reales ───────
+export function useDemoUsers(enabled = true) {
+  return useQuery({
+    queryKey: ['demo_users'],
+    queryFn: () => padelService.getDemoUsers(),
+    enabled
+  });
+}
+
+function useDemoMutation(mutationFn) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['demo_users'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    }
+  });
+}
+
+export function useSetProfileDemo() {
+  return useDemoMutation(({ userId, isDemo }) => padelService.setProfileDemo(userId, isDemo));
+}
+
+export function useSetDemoUserVisible() {
+  return useDemoMutation(({ userId, isVisible }) => padelService.setDemoUserVisible(userId, isVisible));
+}
+
+export function useUpdateDemoProfile() {
+  return useDemoMutation((data) => padelService.updateDemoProfile(data));
+}
+
+export function useCreateDemoPost() {
+  return useDemoMutation((data) => padelService.createDemoPost(data));
+}
+
+export function useCreateDemoComment() {
+  return useDemoMutation((data) => padelService.createDemoComment(data));
+}
+
 export function useUpdateClubProfile() {
   const queryClient = useQueryClient();
   return useMutation({

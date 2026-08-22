@@ -83,10 +83,13 @@ export default function AppLayout() {
       }))
   ];
   const tournaments = tournamentsData.slice(0, 2);
-  const suggestedPlayers = usersData.filter(u => u.id !== user?.id).slice(0, 3);
+  // is_visible !== false: los usuarios demo apagados desde el panel privado
+  // no se listan como jugadores de la comunidad.
+  const visibleUsers = usersData.filter(u => u.id !== user?.id && u.is_visible !== false);
+  const suggestedPlayers = visibleUsers.slice(0, 3);
   
   // Jugadores conectados (En línea)
-  const onlineUsers = usersData.filter(u => u.id !== user?.id).map((u, i) => ({
+  const onlineUsers = visibleUsers.map((u, i) => ({
     ...u,
     status_text: i === 0 ? "En PadelClub Norte" : i === 1 ? "Disponible para jugar" : "Buscando partido 4ta"
   }));

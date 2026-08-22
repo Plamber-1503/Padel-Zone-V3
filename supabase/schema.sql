@@ -39,6 +39,14 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS staff_permissions TEXT[] NO
 -- vez de a los miles de jugadores registrados.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS staff_access_requested_at TIMESTAMPTZ;
 
+-- Usuarios demo 2026-08-19: jugadores de exhibición que el equipo usa para
+-- que el feed no se vea vacío al mostrarle la app a un club. `is_demo` es
+-- interna (no se expone en la vista pública — el jugador que mira no tiene
+-- por qué saber cuáles lo son); `is_visible` es el interruptor para
+-- sacarlos de sugeridos/en línea/buscador sin borrarlos.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_visible BOOLEAN NOT NULL DEFAULT true;
+
 -- --------------------------------------------------------------------
 -- 2. TABLA SEPARADA DE CLUBES (clubs)
 -- --------------------------------------------------------------------
@@ -633,7 +641,11 @@ GRANT EXECUTE ON FUNCTION public.has_staff_permission(TEXT) TO authenticated, an
 --    (sin email) para listados.
 DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
 CREATE POLICY "Public Read Profiles" ON public.profiles
-  FOR SELECT USING (auth.uid() = id OR public.has_staff_permission('users'));
+  FOR SELECT USING (
+    auth.uid() = id
+    OR public.has_staff_permission('users')
+    OR public.has_staff_permission('demo_users')
+  );
 
 DROP POLICY IF EXISTS "Public Create Profiles" ON public.profiles;
 CREATE POLICY "Public Create Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
@@ -646,9 +658,15 @@ CREATE POLICY "Admin Manage Profiles" ON public.profiles
   FOR UPDATE USING (public.current_user_role() = 'admin')
   WITH CHECK (public.current_user_role() = 'admin');
 
+-- `is_visible` sí se expone (la app necesita saber a quién listar en
+-- sugeridos/en línea/buscador); `is_demo` NO — es una marca interna del
+-- equipo, no algo que el jugador que mira tenga que ver.
+-- `is_visible` va al FINAL: CREATE OR REPLACE VIEW solo admite agregar
+-- columnas al final — meterla en el medio Postgres lo lee como un renombre
+-- de la última columna y falla (42P16).
 CREATE OR REPLACE VIEW public.profiles_public AS
 SELECT id, full_name, role, level, elo_rating, bio, avatar_url, matches_played,
-       matches_won, team_partner_id, following_ids, followers_count, created_at
+       matches_won, team_partner_id, following_ids, followers_count, created_at, is_visible
 FROM public.profiles;
 
 GRANT SELECT ON public.profiles_public TO authenticated, anon;
@@ -853,6 +871,183 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.update_club_schedule(UUID, SMALLINT[], TIME, TIME, SMALLINT[], DATE, TEXT) TO authenticated;
+
+-- ====================================================================
+-- USUARIOS DEMO 2026-08-19
+-- Publicar/comentar en nombre de otra persona es exactamente lo que la
+-- policy de posts (auth.uid() = author_id) existe para impedir. Se habilita
+-- únicamente por estas funciones, y solo hacia perfiles marcados is_demo:
+-- así el mecanismo nunca alcanza para hablar en nombre de un jugador real.
+-- ====================================================================
+
+-- Marcar/desmarcar un perfil como demo — SOLO admin, a propósito. Si un
+-- empleado con permiso 'demo_users' pudiera hacerlo, podría marcar como demo
+-- a un jugador real y a partir de ahí publicar en su nombre.
+CREATE OR REPLACE FUNCTION public.set_profile_demo(p_user_id UUID, p_is_demo BOOLEAN)
+RETURNS public.profiles
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.profiles;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Solo un administrador puede marcar usuarios demo.';
+  END IF;
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'No podés marcarte a vos mismo como usuario demo.';
+  END IF;
+
+  UPDATE public.profiles SET is_demo = p_is_demo WHERE id = p_user_id RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No encontramos ese usuario.';
+  END IF;
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_profile_demo(UUID, BOOLEAN) TO authenticated;
+
+-- Prender/apagar un usuario demo — SOLO admin. Este interruptor es el que
+-- define qué usuarios demo quedan habilitados para el equipo: un empleado con
+-- 'demo_users' puede usar los que estén activos, pero no habilitarse otros.
+-- Apagado, además, sale de sugeridos, en línea y del buscador de chat.
+CREATE OR REPLACE FUNCTION public.set_demo_profile_visible(p_user_id UUID, p_is_visible BOOLEAN)
+RETURNS public.profiles
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.profiles;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Solo un administrador puede habilitar o deshabilitar usuarios demo.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_user_id AND is_demo = true) THEN
+    RAISE EXCEPTION 'Ese usuario no es un usuario demo.';
+  END IF;
+
+  UPDATE public.profiles SET is_visible = p_is_visible WHERE id = p_user_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_demo_profile_visible(UUID, BOOLEAN) TO authenticated;
+
+-- Editar el perfil de un usuario demo (nombre, categoría, bio, foto).
+-- role/staff_permissions/is_demo quedan deliberadamente fuera.
+CREATE OR REPLACE FUNCTION public.update_demo_profile(
+  p_user_id UUID, p_full_name TEXT, p_level TEXT, p_bio TEXT, p_avatar_url TEXT
+)
+RETURNS public.profiles
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.profiles;
+BEGIN
+  IF NOT public.has_staff_permission('demo_users') THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_user_id AND is_demo = true) THEN
+    RAISE EXCEPTION 'Ese usuario no es un usuario demo.';
+  END IF;
+  IF COALESCE(TRIM(p_full_name), '') = '' THEN
+    RAISE EXCEPTION 'El nombre no puede quedar vacío.';
+  END IF;
+
+  UPDATE public.profiles
+  SET full_name = TRIM(p_full_name),
+      level = COALESCE(NULLIF(TRIM(p_level), ''), level),
+      bio = NULLIF(TRIM(COALESCE(p_bio, '')), ''),
+      avatar_url = COALESCE(NULLIF(TRIM(COALESCE(p_avatar_url, '')), ''), avatar_url),
+      updated_at = NOW()
+  WHERE id = p_user_id
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_demo_profile(UUID, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+
+-- Publicar en el feed a nombre de un usuario demo.
+CREATE OR REPLACE FUNCTION public.create_demo_post(
+  p_author_id UUID, p_content TEXT, p_media_url TEXT, p_court_id UUID
+)
+RETURNS public.posts
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.posts;
+  v_court_name TEXT;
+BEGIN
+  IF NOT public.has_staff_permission('demo_users') THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+  -- is_visible además de is_demo: el interruptor del admin define qué
+  -- usuarios demo quedan habilitados para el equipo. Uno apagado no se puede
+  -- usar para publicar.
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_author_id AND is_demo = true AND is_visible = true) THEN
+    RAISE EXCEPTION 'Ese usuario demo no está habilitado para publicar.';
+  END IF;
+  IF COALESCE(TRIM(p_content), '') = '' THEN
+    RAISE EXCEPTION 'La publicación no puede estar vacía.';
+  END IF;
+
+  IF p_court_id IS NOT NULL THEN
+    SELECT name INTO v_court_name FROM public.courts WHERE id = p_court_id;
+  END IF;
+
+  INSERT INTO public.posts (author_id, author_type, court_id, court_name, type, content, media_url, likes)
+  VALUES (p_author_id, 'user', p_court_id, v_court_name, 'standard', TRIM(p_content),
+          NULLIF(TRIM(COALESCE(p_media_url, '')), ''), '{}')
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_demo_post(UUID, TEXT, TEXT, UUID) TO authenticated;
+
+-- Comentar a nombre de un usuario demo. Sirve sobre CUALQUIER publicación
+-- (la validación es sobre quién comenta, no sobre de quién es el post).
+CREATE OR REPLACE FUNCTION public.create_demo_comment(
+  p_author_id UUID, p_post_id UUID, p_content TEXT
+)
+RETURNS public.comments
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.comments;
+  v_author public.profiles;
+BEGIN
+  IF NOT public.has_staff_permission('demo_users') THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+
+  SELECT * INTO v_author FROM public.profiles WHERE id = p_author_id AND is_demo = true AND is_visible = true;
+  IF v_author.id IS NULL THEN
+    RAISE EXCEPTION 'Ese usuario demo no está habilitado para comentar.';
+  END IF;
+  IF COALESCE(TRIM(p_content), '') = '' THEN
+    RAISE EXCEPTION 'El comentario no puede estar vacío.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.posts WHERE id = p_post_id) THEN
+    RAISE EXCEPTION 'Esa publicación no existe.';
+  END IF;
+
+  INSERT INTO public.comments (post_id, author_id, author_name, author_avatar, content)
+  VALUES (p_post_id, p_author_id, v_author.full_name, v_author.avatar_url, TRIM(p_content))
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_demo_comment(UUID, UUID, TEXT) TO authenticated;
 
 -- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
 -- (así el panel de socio que ya existe le funciona sin pasos manuales extra).

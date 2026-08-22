@@ -16,6 +16,7 @@ import {
 import CourtCard from '@/components/social/CourtCard';
 import CourtFormModal from '@/components/social/CourtFormModal';
 import ClubPostComposerModal from '@/components/social/ClubPostComposerModal';
+import DemoUsersTab from '@/components/social/DemoUsersTab';
 import {
   Building2, Users, BarChart3, ShieldCheck, CheckCircle2, XCircle, Clock, KeyRound, Sun, Moon,
   Sparkles, Power, Plus, X, ChevronDown, ChevronUp, Loader2, Megaphone, LayoutGrid
@@ -25,7 +26,8 @@ import { Link } from 'react-router-dom';
 const PERMISSION_LABELS = {
   pending_clubs: 'Clubes pendientes',
   active_clubs: 'Clubes activos',
-  users: 'Usuarios'
+  users: 'Usuarios',
+  demo_users: 'Usuarios demo'
 };
 
 const THEME_KEY = 'pz3_theme_admin_panel';
@@ -53,9 +55,10 @@ export default function BackofficePage() {
   }, [isDark]);
 
   const tabs = [
-    has('pending_clubs') && { id: 'pending', label: 'Clubes pendientes', icon: Clock },
     has('active_clubs') && { id: 'active', label: 'Clubes activos', icon: Building2 },
+    has('pending_clubs') && { id: 'pending', label: 'Clubes pendientes', icon: Clock },
     has('users') && { id: 'users', label: 'Usuarios', icon: Users },
+    has('demo_users') && { id: 'demo', label: 'Usuarios demo', icon: Sparkles },
     isAdmin && { id: 'metrics', label: 'Métricas del negocio', icon: BarChart3 },
     isAdmin && { id: 'access', label: 'Gestión de accesos', icon: KeyRound }
   ].filter(Boolean);
@@ -71,7 +74,7 @@ export default function BackofficePage() {
               <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
-              <h1 className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-lg'}>Panel privado de PadelZone</h1>
+              <h1 className={cx(isDark, 'text-white', 'text-slate-900') + ' font-bold text-lg'}>Panel privado de PadelZone - (Modo God)</h1>
               <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs'}>Sesión de {user?.full_name} · {isAdmin ? 'admin' : 'acceso: ' + (perms.map(p => PERMISSION_LABELS[p]).join(', ') || 'ninguno')}</p>
             </div>
           </div>
@@ -102,6 +105,7 @@ export default function BackofficePage() {
         {tab === 'pending' && has('pending_clubs') && <PendingClubsTab isDark={isDark} />}
         {tab === 'active' && has('active_clubs') && <ActiveClubsTab isDark={isDark} />}
         {tab === 'users' && has('users') && <UsersTab isDark={isDark} />}
+        {tab === 'demo' && has('demo_users') && <DemoUsersTab isDark={isDark} isAdmin={isAdmin} />}
         {tab === 'metrics' && isAdmin && <MetricsTab isDark={isDark} />}
         {tab === 'access' && isAdmin && <AccessManagementTab isDark={isDark} />}
       </div>

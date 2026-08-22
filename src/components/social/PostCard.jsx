@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment, useUsers } from '@/api/padelService';
+import { padelService, useOpenMatches, useJoinOpenMatch, useAddComment, useUpdatePost, useDeletePost, useDeleteComment, useUsers, useDemoUsers, useCreateDemoComment } from '@/api/padelService';
 import { toast, confirmToast } from '@/lib/toast';
 import { Heart, MessageCircle, Share2, MapPin, Zap, Trophy, Send, Building2, Pencil, Trash2, X, Check, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -44,6 +44,23 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
   const { data: allUsers = [] } = useUsers();
   const taggedUsers = (post.tagged_user_ids || []).map(id => allUsers.find(u => u.id === id)).filter(Boolean);
 
+  // Auditoría 2026-08-19: la tabla posts no guarda nombre ni foto del autor
+  // (solo author_id), pero acá se leían post.author_name/author_avatar — que
+  // solo existen en los posts de mockData. Resultado: TODA publicación real
+  // salía sin nombre y con el avatar genérico. Se resuelve contra el mismo
+  // listado público que ya se usa para los etiquetados.
+  // Comentar como usuario demo: solo se cargan (y solo se ofrece la opción)
+  // si quien mira tiene el permiso para manejar usuarios demo.
+  const canUseDemoUsers = user?.role === 'admin' || (user?.staff_permissions || []).includes('demo_users');
+  const { data: demoUsers = [] } = useDemoUsers(canUseDemoUsers);
+  const availableDemoUsers = demoUsers.filter(u => u.is_visible);
+  const createDemoComment = useCreateDemoComment();
+  const [commentAsId, setCommentAsId] = useState('');
+
+  const author = allUsers.find(u => u.id === post.author_id);
+  const authorName = author?.full_name || post.author_name || 'Jugador';
+  const authorAvatar = author?.avatar_url || post.author_avatar;
+
   const linkedMatch = post.match_id ? openMatches.find(m => m.id === post.match_id) : null;
   const isUserJoined = linkedMatch?.joined_players?.some(p => p.name === user?.full_name);
   const isMatchFull = linkedMatch && (linkedMatch.joined_players?.length || 0) >= linkedMatch.max_players;
@@ -71,6 +88,22 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
     e.preventDefault();
     if (!commentText.trim()) return;
     setCommentError('');
+
+    // Comentar a nombre de un usuario demo (solo para el equipo con permiso).
+    if (commentAsId) {
+      createDemoComment.mutate(
+        { authorId: commentAsId, postId: post.id, content: commentText },
+        {
+          onSuccess: () => {
+            setCommentText('');
+            if (onPostUpdated) onPostUpdated();
+          },
+          onError: (err) => setCommentError(err.message)
+        }
+      );
+      return;
+    }
+
     addCommentMutation.mutate(
       { postId: post.id, text: commentText },
       {
@@ -130,7 +163,7 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
         <div className="flex items-center gap-3">
           <Link to={`/profile/${post.author_id}`}>
             <img
-              src={post.author_avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
+              src={authorAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"}
               alt=""
               className="w-10 h-10 rounded-xl object-cover border border-slate-300 dark:border-slate-700"
             />
@@ -138,7 +171,7 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
           <div>
             <div className="flex items-center gap-2">
               <Link to={`/profile/${post.author_id}`} className={`font-bold text-sm hover:underline ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {post.author_name}
+                {authorName}
               </Link>
               {post.author_type === 'court' && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border flex items-center gap-1 ${
@@ -273,8 +306,8 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
           const isFlexible = post.open_match_details?.is_flexible_date || post.open_match_details?.date === 'Partido Abierto' || post.open_match_details?.time === 'A convenir' || post.open_match_details?.time === 'Fecha a convenir';
           const courtName = post.court_name || 'la cancha';
           const dynamicMsg = (!isFlexible && post.open_match_details?.date && post.open_match_details?.time && post.open_match_details?.date !== 'Partido Abierto')
-            ? `Hola ${post.author_name}! Me quiero sumar al partido que estás organizando en ${courtName} el ${post.open_match_details.date} a las ${post.open_match_details.time}.`
-            : `Hola ${post.author_name}! Me quiero sumar al partido que estás organizando en ${courtName}. ¿Qué día y a qué hora podemos coordinar?`;
+            ? `Hola ${authorName}! Me quiero sumar al partido que estás organizando en ${courtName} el ${post.open_match_details.date} a las ${post.open_match_details.time}.`
+            : `Hola ${authorName}! Me quiero sumar al partido que estás organizando en ${courtName}. ¿Qué día y a qué hora podemos coordinar?`;
 
           return (
             <div className={`border rounded-2xl p-4 space-y-3 shadow-md ${
@@ -290,7 +323,7 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
                     {post.open_match_details?.search_type === 'partner' ? '👥 Buscando Pareja' : '⚡ Buscando 4to Jugador'}
                   </span>
                   <h4 className={`font-bold text-sm mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Organiza <Link to={`/profile/${post.author_id}`} className="hover:underline text-emerald-500">{post.author_name}</Link>
+                    Organiza <Link to={`/profile/${post.author_id}`} className="hover:underline text-emerald-500">{authorName}</Link>
                   </h4>
                   <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                     {isFlexible
@@ -398,20 +431,35 @@ export default function PostCard({ post, onPostUpdated, isDark: isDarkOverride }
           {/* Add comment form — el club puede haber desactivado comentarios
               en sus publicaciones (interruptor general, panel del club) */}
           {commentsAllowed ? (
-            <form onSubmit={handleComment} className="flex gap-2 pt-1">
+            <form onSubmit={handleComment} className="flex flex-wrap gap-2 pt-1">
+              {availableDemoUsers.length > 0 && (
+                <select
+                  value={commentAsId}
+                  onChange={(e) => setCommentAsId(e.target.value)}
+                  title="Comentar a nombre de un usuario demo"
+                  className={`rounded-xl px-2 py-1.5 text-[11px] border focus:outline-none focus:border-emerald-500 w-full sm:w-auto ${
+                    isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-300 text-slate-700'
+                  }`}
+                >
+                  <option value="">Comentar como vos</option>
+                  {availableDemoUsers.map(d => (
+                    <option key={d.id} value={d.id}>Como {d.full_name}</option>
+                  ))}
+                </select>
+              )}
               <input
                 type="text"
                 placeholder="Escribí un comentario..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                disabled={addCommentMutation.isPending}
+                disabled={addCommentMutation.isPending || createDemoComment.isPending}
                 className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500 border disabled:opacity-60 ${
                   isDark ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
                 }`}
               />
               <button
                 type="submit"
-                disabled={!commentText.trim() || addCommentMutation.isPending}
+                disabled={!commentText.trim() || addCommentMutation.isPending || createDemoComment.isPending}
                 className="bg-emerald-500 hover:bg-emerald-600 text-white p-1.5 rounded-xl disabled:opacity-50 transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4" />
