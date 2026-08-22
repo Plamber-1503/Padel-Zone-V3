@@ -78,6 +78,16 @@ ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS is_virtual BOOLEAN NOT NULL DE
 -- club que aplica a TODAS sus publicaciones (no por publicación individual).
 ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
 
+-- Horarios del club 2026-08-19: qué días abre, y un cierre puntual de un día
+-- concreto. `closed_on` guarda LA FECHA cerrada en vez de un booleano
+-- "cerrado hoy" — así se vence solo mañana y el club no queda cerrado para
+-- siempre por olvidarse de apagarlo. `notice_message` es el aviso libre que
+-- el club le muestra a los jugadores (ej. "hoy cerramos por lluvia").
+-- 0=domingo … 6=sábado, mismo criterio que JS getDay().
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS open_days SMALLINT[] NOT NULL DEFAULT '{0,1,2,3,4,5,6}';
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS closed_on DATE;
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS notice_message TEXT;
+
 -- --------------------------------------------------------------------
 -- 3. TABLA DE CANCHAS VINCULADAS A CLUBES (courts)
 -- --------------------------------------------------------------------
@@ -117,6 +127,15 @@ ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS is_bookable BOOLEAN NOT NULL 
 ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS opening_time TIME NOT NULL DEFAULT '09:00';
 ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS closing_time TIME NOT NULL DEFAULT '22:30';
 ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS slot_duration_minutes SMALLINT NOT NULL DEFAULT 90 CHECK (slot_duration_minutes IN (60, 90));
+
+-- Duraciones ofrecidas 2026-08-19: un club puede querer ofrecer turnos de 1h
+-- Y de 1:30 a la vez, y que el jugador elija al reservar — por eso pasa a ser
+-- una lista y no un valor único. Se siembra con lo que ya tenía cada cancha
+-- en slot_duration_minutes, que queda como está para no romper nada viejo.
+ALTER TABLE public.courts ADD COLUMN IF NOT EXISTS slot_durations SMALLINT[];
+UPDATE public.courts SET slot_durations = ARRAY[slot_duration_minutes] WHERE slot_durations IS NULL;
+ALTER TABLE public.courts ALTER COLUMN slot_durations SET DEFAULT '{90}';
+ALTER TABLE public.courts ALTER COLUMN slot_durations SET NOT NULL;
 
 -- --------------------------------------------------------------------
 -- 4. TABLA DE DISPONIBILIDAD DE CANCHAS (court_availability)
@@ -715,6 +734,126 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.set_club_comments_allowed(UUID, BOOLEAN) TO authenticated;
 
+-- Editar el perfil del club 2026-08-19: hasta acá NADIE podía editar los
+-- datos de su propio club (no existía ninguna policy de UPDATE para el
+-- dueño). Se resuelve con una función, no con un UPDATE genérico, porque
+-- eso último dejaría reescribir columnas sensibles — status, owner_id,
+-- is_virtual, is_visible quedan deliberadamente fuera de esta función.
+-- Lo puede usar el dueño real del club, o el staff con permiso
+-- 'active_clubs' pero solo sobre clubes virtuales (los de demo).
+CREATE OR REPLACE FUNCTION public.update_club_profile(
+  p_club_id UUID,
+  p_name TEXT,
+  p_address TEXT,
+  p_city TEXT,
+  p_phone TEXT,
+  p_description TEXT,
+  p_image_url TEXT,
+  p_cover_image_url TEXT
+)
+RETURNS public.clubs
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.clubs;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.clubs
+    WHERE id = p_club_id
+      AND (
+        owner_id = auth.uid()
+        OR (is_virtual = true AND public.has_staff_permission('active_clubs'))
+      )
+  ) THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+
+  IF COALESCE(TRIM(p_name), '') = '' THEN
+    RAISE EXCEPTION 'El nombre del club no puede quedar vacío.';
+  END IF;
+
+  UPDATE public.clubs
+  SET name = TRIM(p_name),
+      address = COALESCE(NULLIF(TRIM(p_address), ''), address),
+      city = COALESCE(NULLIF(TRIM(p_city), ''), city),
+      phone = NULLIF(TRIM(COALESCE(p_phone, '')), ''),
+      description = NULLIF(TRIM(COALESCE(p_description, '')), ''),
+      image_url = NULLIF(TRIM(COALESCE(p_image_url, '')), ''),
+      cover_image_url = NULLIF(TRIM(COALESCE(p_cover_image_url, '')), '')
+  WHERE id = p_club_id
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_club_profile(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+
+-- Horarios y turnos del club 2026-08-19: una sola pantalla configura los días
+-- que abre, el horario y las duraciones de turno — y eso se aplica a TODAS
+-- las canchas del club de una (el horario por cancha sigue existiendo en el
+-- formulario de cada cancha, para la excepción puntual). Mismo criterio de
+-- permisos que update_club_profile.
+CREATE OR REPLACE FUNCTION public.update_club_schedule(
+  p_club_id UUID,
+  p_open_days SMALLINT[],
+  p_opening_time TIME,
+  p_closing_time TIME,
+  p_slot_durations SMALLINT[],
+  p_closed_on DATE,
+  p_notice_message TEXT
+)
+RETURNS public.clubs
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.clubs;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.clubs
+    WHERE id = p_club_id
+      AND (
+        owner_id = auth.uid()
+        OR (is_virtual = true AND public.has_staff_permission('active_clubs'))
+      )
+  ) THEN
+    RAISE EXCEPTION 'No autorizado.';
+  END IF;
+
+  IF p_closing_time <= p_opening_time THEN
+    RAISE EXCEPTION 'La hora de cierre tiene que ser posterior a la de apertura.';
+  END IF;
+
+  IF p_slot_durations IS NULL OR array_length(p_slot_durations, 1) IS NULL THEN
+    RAISE EXCEPTION 'Elegí al menos una duración de turno.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM unnest(p_slot_durations) d WHERE d NOT IN (60, 90)) THEN
+    RAISE EXCEPTION 'Las duraciones válidas son 60 y 90 minutos.';
+  END IF;
+
+  UPDATE public.clubs
+  SET open_days = COALESCE(p_open_days, open_days),
+      closed_on = p_closed_on,
+      notice_message = NULLIF(TRIM(COALESCE(p_notice_message, '')), '')
+  WHERE id = p_club_id
+  RETURNING * INTO v_row;
+
+  UPDATE public.courts
+  SET opening_time = p_opening_time,
+      closing_time = p_closing_time,
+      slot_durations = p_slot_durations,
+      slot_duration_minutes = p_slot_durations[1]
+  WHERE club_id = p_club_id;
+
+  RETURN v_row;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_club_schedule(UUID, SMALLINT[], TIME, TIME, SMALLINT[], DATE, TEXT) TO authenticated;
+
 -- Al aprobar un club, el dueño pasa automáticamente a role='court_owner'
 -- (así el panel de socio que ya existe le funciona sin pasos manuales extra).
 CREATE OR REPLACE FUNCTION public.sync_club_owner_role()
@@ -921,10 +1060,22 @@ CREATE POLICY "Public Read Bookings" ON public.bookings FOR SELECT USING (true);
 -- tiene que ser reservable de verdad (courts.is_bookable) — bloquea a nivel
 -- de base de datos que alguien reserve un turno en una cancha de demo/
 -- exhibición, no solo que el botón esté deshabilitado en la UI.
+-- Días cerrados 2026-08-19: además de que la cancha sea reservable, el club
+-- tiene que abrir ese día de la semana y esa fecha no puede ser su cierre
+-- puntual (closed_on). Va también acá y no solo en la UI: si el club cierra,
+-- nadie puede colar una reserva salteando la pantalla.
 CREATE POLICY "Users Create Bookings" ON public.bookings
   FOR INSERT WITH CHECK (
     auth.uid() = user_id
-    AND EXISTS (SELECT 1 FROM public.courts WHERE courts.id = court_id AND courts.is_bookable = true)
+    AND EXISTS (
+      SELECT 1
+      FROM public.courts
+      JOIN public.clubs ON clubs.id = courts.club_id
+      WHERE courts.id = court_id
+        AND courts.is_bookable = true
+        AND EXTRACT(DOW FROM date)::SMALLINT = ANY (clubs.open_days)
+        AND (clubs.closed_on IS NULL OR clubs.closed_on <> date)
+    )
   );
 CREATE POLICY "Users Update Own Bookings" ON public.bookings FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users Delete Own Bookings" ON public.bookings FOR DELETE USING (auth.uid() = user_id);

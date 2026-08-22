@@ -805,10 +805,15 @@ export const padelService = {
 
   // Panel del club: reservas canceladas (incluye las "viejas" de una
   // modificación) de las canchas que administra el dueño logueado.
-  async getCancelledBookingsForOwner() {
-    const currentUser = this.getCurrentUser();
-    const { data: myClubs } = await supabase.from('clubs').select('id').eq('owner_id', currentUser.id);
-    const clubIds = (myClubs || []).map((c) => c.id);
+  async getCancelledBookingsForOwner(clubId = null) {
+    let clubIds;
+    if (clubId) {
+      clubIds = [clubId];
+    } else {
+      const currentUser = this.getCurrentUser();
+      const { data: myClubs } = await supabase.from('clubs').select('id').eq('owner_id', currentUser.id);
+      clubIds = (myClubs || []).map((c) => c.id);
+    }
     if (clubIds.length === 0) return [];
 
     const { data: myCourts } = await supabase.from('courts').select('id, name').in('club_id', clubIds);
@@ -850,8 +855,52 @@ export const padelService = {
   // Panel del club 2026-08-12: canchas reales del club del dueño logueado
   // (antes el panel mostraba TODAS las canchas de la app, mezcladas con
   // altas que solo vivían en memoria y se perdían al refrescar).
-  async getMyClubCourts() {
-    const club = await this.getMyClubApplication();
+  // Edición del perfil del club (nombre, dirección, descripción, fotos) vía
+  // función server-side: el dueño edita el suyo, el staff solo los virtuales.
+  // status/owner_id/is_virtual/is_visible no se tocan desde acá a propósito.
+  async updateClubProfile({ clubId, name, address, city, phone, description, imageUrl, coverImageUrl }) {
+    const { data, error } = await supabase.rpc('update_club_profile', {
+      p_club_id: clubId,
+      p_name: name,
+      p_address: address,
+      p_city: city,
+      p_phone: phone || null,
+      p_description: description || null,
+      p_image_url: imageUrl || null,
+      p_cover_image_url: coverImageUrl || null
+    });
+    if (error) throw new Error(`Error al guardar el club: ${error.message}`);
+    return data;
+  },
+
+  // Horarios y turnos del club: días que abre, horario, duraciones ofrecidas,
+  // cierre puntual de un día y aviso a los jugadores. La función server-side
+  // replica el horario a todas las canchas del club.
+  async updateClubSchedule({ clubId, openDays, openingTime, closingTime, slotDurations, closedOn, noticeMessage }) {
+    const { data, error } = await supabase.rpc('update_club_schedule', {
+      p_club_id: clubId,
+      p_open_days: openDays,
+      p_opening_time: openingTime,
+      p_closing_time: closingTime,
+      p_slot_durations: slotDurations,
+      p_closed_on: closedOn || null,
+      p_notice_message: noticeMessage || null
+    });
+    if (error) throw new Error(`Error al guardar los horarios: ${error.message}`);
+    return data;
+  },
+
+  async getClubById(id) {
+    const { data, error } = await supabase.from('clubs').select('*').eq('id', id).maybeSingle();
+    if (error && isSupabaseConfigured) throw new Error(`Error al cargar el club: ${error.message}`);
+    return data || null;
+  },
+
+  // `clubId` (2026-08-19): el panel privado abre este mismo panel apuntando a
+  // un club virtual, que no tiene dueño con quien resolverlo. Sin ese id se
+  // comporta como siempre: el club del usuario logueado.
+  async getMyClubCourts(clubId = null) {
+    const club = clubId ? await this.getClubById(clubId) : await this.getMyClubApplication();
     if (!club) return { club: null, courts: [] };
     const { data, error } = await supabase
       .from('courts')
@@ -959,8 +1008,8 @@ export const padelService = {
   // Métricas reales del club (reemplaza los literales fijos "$1.480.000",
   // "94%", etc. que mostraba el panel B2B) — calculadas a partir de las
   // reservas confirmadas del mes en curso sobre las canchas del club.
-  async getMyClubMetrics() {
-    const { club, courts } = await this.getMyClubCourts();
+  async getMyClubMetrics(clubId = null) {
+    const { club, courts } = await this.getMyClubCourts(clubId);
     if (!club) return null;
     const courtIds = courts.map((c) => c.id);
     if (courtIds.length === 0) {
@@ -1561,10 +1610,10 @@ export function useModifyBooking() {
   });
 }
 
-export function useCancelledBookingsForOwner() {
+export function useCancelledBookingsForOwner(clubId = null) {
   return useQuery({
-    queryKey: ['owner_cancelled_bookings'],
-    queryFn: () => padelService.getCancelledBookingsForOwner()
+    queryKey: ['owner_cancelled_bookings', clubId],
+    queryFn: () => padelService.getCancelledBookingsForOwner(clubId)
   });
 }
 
@@ -1738,10 +1787,36 @@ export function useRequestClubMembership() {
 }
 
 // ── Panel de dueño de club: inventario de canchas y métricas reales ───────
-export function useMyClubCourts() {
+export function useUpdateClubProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.updateClubProfile(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_active_clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
+export function useUpdateClubSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => padelService.updateClubSchedule(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_club_courts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_active_clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['clubs'] });
+      queryClient.invalidateQueries({ queryKey: ['courts'] });
+    }
+  });
+}
+
+export function useMyClubCourts(clubId = null) {
   return useQuery({
-    queryKey: ['my_club_courts'],
-    queryFn: () => padelService.getMyClubCourts()
+    queryKey: ['my_club_courts', clubId],
+    queryFn: () => padelService.getMyClubCourts(clubId)
   });
 }
 
@@ -1812,10 +1887,10 @@ export function useUploadPostPhoto() {
   });
 }
 
-export function useMyClubMetrics() {
+export function useMyClubMetrics(clubId = null) {
   return useQuery({
-    queryKey: ['my_club_metrics'],
-    queryFn: () => padelService.getMyClubMetrics()
+    queryKey: ['my_club_metrics', clubId],
+    queryFn: () => padelService.getMyClubMetrics(clubId)
   });
 }
 

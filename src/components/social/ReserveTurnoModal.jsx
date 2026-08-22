@@ -3,8 +3,8 @@ import { useCourts, useBookings } from '@/api/padelService';
 import { useBookingModal } from '@/context/BookingModalContext';
 import RecurringBookingModal from './RecurringBookingModal';
 import BookingConfirmModal from './BookingConfirmModal';
-import { generateCourtSlots } from '@/lib/courtSlots';
-import { X, MapPin, CalendarClock, Pencil } from 'lucide-react';
+import { generateCourtSlots, getCourtDurations, isClubOpenOn } from '@/lib/courtSlots';
+import { X, MapPin, CalendarClock, Pencil, Info } from 'lucide-react';
 
 const WEEKDAY_LABELS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
@@ -33,6 +33,7 @@ export default function ReserveTurnoModal() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringSlot, setRecurringSlot] = useState(null);
   const [pendingSlot, setPendingSlot] = useState(null);
+  const [selectedDuration, setSelectedDuration] = useState(null);
 
   const isOpen = !!state;
   const modifyBooking = state?.modifyBooking || null;
@@ -47,13 +48,19 @@ export default function ReserveTurnoModal() {
     setIsRecurring(!!state?.isRecurring);
     setRecurringSlot(null);
     setPendingSlot(null);
+    setSelectedDuration(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, lockedCourtId]);
 
   const court = allCourts.find((c) => c.id === selectedCourtId);
+  const club = court?.clubs || null;
   const { data: courtBookings = [] } = useBookings(selectedCourtId, selectedDate);
   const takenSlots = courtBookings.map((b) => (b.start_time || '').slice(0, 5));
-  const bookingSlots = useMemo(() => generateCourtSlots(court), [court]);
+
+  const durations = useMemo(() => getCourtDurations(court), [court]);
+  const activeDuration = durations.includes(selectedDuration) ? selectedDuration : durations[0];
+  const bookingSlots = useMemo(() => generateCourtSlots(court, activeDuration), [court, activeDuration]);
+  const isClubOpen = isClubOpenOn(club, selectedDate);
 
   if (!isOpen) return null;
 
@@ -118,19 +125,26 @@ export default function ReserveTurnoModal() {
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">2. Día</label>
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {bookingDays.map((day) => (
-                <button
-                  key={day.value}
-                  onClick={() => setSelectedDate(day.value)}
-                  className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    selectedDate === day.value
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
-                  }`}
-                >
-                  {day.label}
-                </button>
-              ))}
+              {bookingDays.map((day) => {
+                const dayClosed = !isClubOpenOn(club, day.value);
+                return (
+                  <button
+                    key={day.value}
+                    disabled={dayClosed}
+                    title={dayClosed ? 'El club no abre este día' : undefined}
+                    onClick={() => setSelectedDate(day.value)}
+                    className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      dayClosed
+                        ? 'bg-slate-800/40 text-slate-600 border-slate-800 line-through cursor-not-allowed'
+                        : selectedDate === day.value
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 cursor-pointer'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50 cursor-pointer'
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -146,6 +160,36 @@ export default function ReserveTurnoModal() {
             </label>
           )}
 
+          {/* Aviso que dejó el club */}
+          {club?.notice_message && (
+            <div className="flex items-start gap-2.5 bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-3 text-xs text-sky-200">
+              <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+              <span>{club.notice_message}</span>
+            </div>
+          )}
+
+          {/* Duración del turno — solo si el club ofrece más de una */}
+          {durations.length > 1 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Duración del turno</label>
+              <div className="flex gap-2">
+                {durations.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setSelectedDuration(d)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      activeDuration === d
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
+                    }`}
+                  >
+                    {d === 60 ? '1 hora' : '1 hora y media'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 3. Horario */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">3. Horario</label>
@@ -154,10 +198,15 @@ export default function ReserveTurnoModal() {
                 Esta cancha es de exhibición — no está disponible para reservar.
               </p>
             )}
+            {court && court.is_bookable !== false && !isClubOpen && (
+              <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                El club está cerrado este día — no se pueden reservar turnos.
+              </p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
               {bookingSlots.map((slot) => {
                 const isTaken = takenSlots.includes(slot.start);
-                const isDisabled = isTaken || !selectedCourtId || court?.is_bookable === false;
+                const isDisabled = isTaken || !selectedCourtId || court?.is_bookable === false || !isClubOpen;
                 return (
                   <button
                     key={slot.start}
@@ -170,7 +219,9 @@ export default function ReserveTurnoModal() {
                     }`}
                   >
                     <p className="font-bold text-xs">{slot.label}</p>
-                    <p className="text-[10px] mt-1">{isTaken ? 'Ocupado' : court?.is_bookable === false ? 'No reservable' : 'Disponible'}</p>
+                    <p className="text-[10px] mt-1">
+                      {isTaken ? 'Ocupado' : court?.is_bookable === false ? 'No reservable' : !isClubOpen ? 'Cerrado' : 'Disponible'}
+                    </p>
                   </button>
                 );
               })}

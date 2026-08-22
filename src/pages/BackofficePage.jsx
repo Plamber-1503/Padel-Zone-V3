@@ -18,8 +18,9 @@ import CourtFormModal from '@/components/social/CourtFormModal';
 import ClubPostComposerModal from '@/components/social/ClubPostComposerModal';
 import {
   Building2, Users, BarChart3, ShieldCheck, CheckCircle2, XCircle, Clock, KeyRound, Sun, Moon,
-  Sparkles, Power, Plus, X, ChevronDown, ChevronUp, Loader2, Megaphone
+  Sparkles, Power, Plus, X, ChevronDown, ChevronUp, Loader2, Megaphone, LayoutGrid
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const PERMISSION_LABELS = {
   pending_clubs: 'Clubes pendientes',
@@ -231,6 +232,12 @@ function ActiveClubsTab({ isDark }) {
                 <div className="flex items-center gap-2 shrink-0">
                   {c.is_virtual && (
                     <>
+                      <Link
+                        to={`/club-dashboard?clubId=${c.id}`}
+                        className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-amber-400', 'bg-slate-100 hover:bg-slate-200 text-amber-600') + ' flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer'}
+                      >
+                        <LayoutGrid className="w-3.5 h-3.5" /> Panel del club
+                      </Link>
                       <button
                         onClick={() => setComposerClub(c)}
                         className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-emerald-400', 'bg-slate-100 hover:bg-slate-200 text-emerald-600') + ' flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer'}

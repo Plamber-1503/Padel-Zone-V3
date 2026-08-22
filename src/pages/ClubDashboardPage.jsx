@@ -24,13 +24,19 @@ import {
   Megaphone,
   Sun,
   Moon,
-  MessageCircle
+  MessageCircle,
+  Pencil,
+  Clock
 } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
+import ClubEditModal from '@/components/social/ClubEditModal';
+import ClubScheduleTab from '@/components/social/ClubScheduleTab';
 
 const TABS = [
   { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
   { id: 'inventory', label: 'Canchas', icon: Building2 },
+  { id: 'schedule', label: 'Horarios y Turnos', icon: Clock },
   { id: 'posts', label: 'Publicaciones', icon: Megaphone },
   { id: 'metrics', label: 'Métricas & Facturación', icon: BarChart3 },
   { id: 'locks', label: 'Bloqueo de Turnos', icon: Lock },
@@ -46,11 +52,24 @@ const cx = (isDark, dark, light) => (isDark ? dark : light);
 
 export default function ClubDashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('resumen');
-  const { data: clubData, isLoading: isLoadingCourts } = useMyClubCourts();
+
+  // Panel de un club puntual (?clubId=...): lo usa el panel privado para
+  // abrir el panel de un club de demo, que no tiene dueño con quien
+  // resolverlo. Solo se honra si quien mira es staff — un jugador cualquiera
+  // que pegue el parámetro a mano sigue viendo su propio club (y las RLS lo
+  // frenan igual del lado del servidor).
+  const isStaff = user?.role === 'admin' || (user?.staff_permissions || []).includes('active_clubs');
+  const requestedClubId = searchParams.get('clubId');
+  const clubId = isStaff ? requestedClubId : null;
+
+  const { data: clubData, isLoading: isLoadingCourts } = useMyClubCourts(clubId);
   const club = clubData?.club || null;
   const courtsList = clubData?.courts || [];
-  const { data: metrics } = useMyClubMetrics();
+  const { data: metrics } = useMyClubMetrics(clubId);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const [isDark, setIsDark] = useState(() => {
     try { return (localStorage.getItem(THEME_KEY) || 'dark') === 'dark'; } catch { return true; }
@@ -62,7 +81,7 @@ export default function ClubDashboardPage() {
   // courtModal: null (cerrado) | 'add' | objeto de cancha (editando esa cancha)
   const [courtModal, setCourtModal] = useState(null);
 
-  const handleLogoutSocio = () => navigate('/');
+  const handleLogoutSocio = () => navigate(clubId ? '/panel-padelzone' : '/');
 
   return (
     <div className={cx(isDark, 'min-h-screen bg-[#080c14] text-slate-100', 'min-h-screen bg-slate-50 text-slate-900') + ' p-4 md:p-8'}>
@@ -104,6 +123,14 @@ export default function ClubDashboardPage() {
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
             <button
+              onClick={() => setIsEditOpen(true)}
+              disabled={!club}
+              className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700', 'bg-white hover:bg-slate-100 text-slate-900 border-slate-300') + ' flex-1 md:flex-none font-bold text-xs px-4 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50'}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Editar Club</span>
+            </button>
+            <button
               onClick={() => setCourtModal('add')}
               className="flex-1 md:flex-none bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-105 cursor-pointer"
             >
@@ -114,7 +141,7 @@ export default function ClubDashboardPage() {
               onClick={handleLogoutSocio}
               className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700', 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300') + ' flex-1 md:flex-none font-bold text-xs px-4 py-2.5 rounded-xl border transition-colors cursor-pointer'}
             >
-              Salir de Socio
+              {clubId ? 'Volver al panel' : 'Salir de Socio'}
             </button>
           </div>
         </div>
@@ -216,12 +243,17 @@ export default function ClubDashboardPage() {
       )}
 
       {/* ── PUBLICACIONES DEL CLUB ──────────────────────────────────────── */}
+      {activeTab === 'schedule' && <ClubScheduleTab isDark={isDark} club={club} courtsList={courtsList} />}
       {activeTab === 'posts' && <ClubPostsTab isDark={isDark} club={club} courtsList={courtsList} />}
 
       {/* ── CANCELACIONES ────────────────────────────────────────────── */}
-      {activeTab === 'cancellations' && <CancellationsTab isDark={isDark} />}
+      {activeTab === 'cancellations' && <CancellationsTab isDark={isDark} clubId={clubId} />}
 
       {/* ── MODAL AGREGAR / EDITAR CANCHA ───────────────────────────── */}
+      {isEditOpen && club && (
+        <ClubEditModal isDark={isDark} club={club} onClose={() => setIsEditOpen(false)} />
+      )}
+
       {courtModal && (
         club ? (
           <CourtFormModal isDark={isDark} club={club} court={courtModal === 'add' ? null : courtModal} onClose={() => setCourtModal(null)} />
@@ -311,8 +343,8 @@ function MetricsTab({ isDark }) {
 
 // Cancelaciones y modificaciones de reservas de las canchas del club — para
 // ver qué tan seguido cancelan/modifican los jugadores y con quién.
-function CancellationsTab({ isDark }) {
-  const { data: rows = [], isLoading } = useCancelledBookingsForOwner();
+function CancellationsTab({ isDark, clubId }) {
+  const { data: rows = [], isLoading } = useCancelledBookingsForOwner(clubId);
 
   if (isLoading) return <p className={cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs'}>Cargando...</p>;
   if (rows.length === 0) {
