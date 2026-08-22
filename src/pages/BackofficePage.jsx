@@ -15,9 +15,10 @@ import {
 } from '@/api/padelService';
 import CourtCard from '@/components/social/CourtCard';
 import CourtFormModal from '@/components/social/CourtFormModal';
+import ClubPostComposerModal from '@/components/social/ClubPostComposerModal';
 import {
   Building2, Users, BarChart3, ShieldCheck, CheckCircle2, XCircle, Clock, KeyRound, Sun, Moon,
-  Sparkles, Power, Plus, X, ChevronDown, ChevronUp, Loader2
+  Sparkles, Power, Plus, X, ChevronDown, ChevronUp, Loader2, Megaphone
 } from 'lucide-react';
 
 const PERMISSION_LABELS = {
@@ -175,6 +176,11 @@ function ActiveClubsTab({ isDark }) {
   const setVisibility = useSetClubVisibility();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedClubId, setExpandedClubId] = useState(null);
+  // Club virtual elegido para publicar una novedad a su nombre: los clubes
+  // virtuales no tienen dueño que pueda entrar a publicar desde su panel,
+  // así que la publicación se dispara desde acá (queda firmada con el
+  // author_id del admin, que es lo que exige la policy de posts).
+  const [composerClub, setComposerClub] = useState(null);
   const muted = cx(isDark, 'text-slate-400', 'text-slate-500') + ' text-xs';
 
   return (
@@ -224,13 +230,21 @@ function ActiveClubsTab({ isDark }) {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {c.is_virtual && (
-                    <button
-                      onClick={() => setExpandedClubId(isExpanded ? null : c.id)}
-                      className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-slate-300', 'bg-slate-100 hover:bg-slate-200 text-slate-600') + ' flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer'}
-                    >
-                      <Building2 className="w-3.5 h-3.5" /> Canchas
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setComposerClub(c)}
+                        className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-emerald-400', 'bg-slate-100 hover:bg-slate-200 text-emerald-600') + ' flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer'}
+                      >
+                        <Megaphone className="w-3.5 h-3.5" /> Publicar
+                      </button>
+                      <button
+                        onClick={() => setExpandedClubId(isExpanded ? null : c.id)}
+                        className={cx(isDark, 'bg-slate-800 hover:bg-slate-700 text-slate-300', 'bg-slate-100 hover:bg-slate-200 text-slate-600') + ' flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer'}
+                      >
+                        <Building2 className="w-3.5 h-3.5" /> Canchas
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => setVisibility.mutate({ clubId: c.id, isVisible: !c.is_visible })}
@@ -260,8 +274,21 @@ function ActiveClubsTab({ isDark }) {
           onCreated={(club) => setExpandedClubId(club.id)}
         />
       )}
+
+      {composerClub && (
+        <VirtualClubComposer isDark={isDark} club={composerClub} onClose={() => setComposerClub(null)} />
+      )}
     </div>
   );
+}
+
+// El composer necesita la lista de canchas del club elegido, y ese club se
+// elige recién al hacer click — de ahí este componente intermedio, para no
+// llamar al hook de canchas de forma condicional en el listado.
+function VirtualClubComposer({ isDark, club, onClose }) {
+  const { data: courts = [], isLoading } = useCourtsForClub(club.id);
+  if (isLoading) return null;
+  return <ClubPostComposerModal isDark={isDark} club={club} courtsList={courts} onClose={onClose} />;
 }
 
 function CreateVirtualClubModal({ isDark, onClose, onCreated }) {
